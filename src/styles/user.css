@@ -89,7 +89,8 @@ header p {
 /* Orders button in header – white background with orange text */
 .orders-btn {
   position: absolute;
-  right: 5px;
+  /* 12px matches header padding; 2px tighter than Menu to offset scrollbar + narrower label */
+  right: 10px;
   top: 50%;
   transform: translateY(-50%);
   background: white;
@@ -99,43 +100,69 @@ header p {
   padding: 4px 10px;
   font-family: Arial;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
+  line-height: 1;
   cursor: pointer;
   text-decoration: none;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.1s;
   height: 28px;
+  min-height: 28px;
   box-sizing: border-box;
 }
 
 .orders-btn:hover {
-  transform: translateY(-50%) translateY(-1px);
+  opacity: 0.95;
 }
 
 .orders-btn:active {
-  transform: translateY(-50%) scale(0.95);
+  opacity: 0.9;
 }
 
-/* Menu button in header (same styles as orders-btn for consistency) */
+/* Menu button in header — same shape as orders-btn for consistency */
 .menu-btn {
   position: absolute;
-  left: 5px;
+  /* Slightly more than Orders — wider icon+label needs extra air to look even */
+  left: 12px;
   top: 50%;
   transform: translateY(-50%);
   background: var(--theme-button-bg, #ff6b00);
   color: #fff;
   border: none;
-  border-radius: 20px;
-  padding: 4px 5px;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-family: Arial;
   font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
   cursor: pointer;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  transition: background 0.2s ease, transform 0.1s ease;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  min-height: 28px;
+  box-sizing: border-box;
+  transition: background 0.2s ease;
+}
+
+.menu-btn-icon {
+  width: 14px;
+  height: 14px;
+  display: block;
+  flex-shrink: 0;
+  position: relative;
+  top: 0.5px;
+}
+
+.menu-btn-label,
+.orders-btn-label {
+  display: inline-block;
+  line-height: 1;
+  position: relative;
+  top: 1px;
 }
 
 .menu-btn:hover {
@@ -143,7 +170,8 @@ header p {
 }
 
 .menu-btn:active {
-  transform: translateY(-50%) scale(0.95);
+  transform: translateY(-50%);
+  opacity: 0.95;
 }
 
 .cart-badge {
@@ -1214,13 +1242,13 @@ footer {
   }
 
   .orders-btn {
-    right: 8px;
+    right: 12px;
     padding: 4px 8px;
     font-size: 12px;
   }
 
   .menu-btn {
-    left: 8px;
+    left: 14px;
     padding: 4px 8px;
     font-size: 12px;
   }

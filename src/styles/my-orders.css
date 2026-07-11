@@ -7,7 +7,7 @@
     .orders-container {
       max-width: 1400px;
       padding: 20px 8px;
-      max-height: calc(100vh - 60px);
+      max-height: calc(100vh - 52px);
       overflow-y: auto;
       scroll-behavior: smooth;
     }

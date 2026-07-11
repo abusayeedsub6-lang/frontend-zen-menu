@@ -203,10 +203,13 @@ export default function MyOrdersPage() {
   return (
     <>
       <header>
-        <h1>My Orders</h1>
-        <p>View your order history</p>
-        <Link to={menuPath} className="menu-btn" id="menuBtn">
-          Menu
+        <div className="header-content">
+          <h1>My Orders</h1>
+          <p>View your order history</p>
+        </div>
+        <Link to={menuPath} className="menu-btn" id="menuBtn" aria-label="Back to menu">
+          <img src="/icons/back-exit.svg" alt="" className="menu-btn-icon" width="14" height="14" />
+          <span className="menu-btn-label">Menu</span>
         </Link>
       </header>
 

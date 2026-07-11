@@ -15,12 +15,12 @@ export default function MenuHeader({
         <p id="menuDescription" style={descriptionStyle}>
           {menuDescription}
         </p>
-        {showOrdersButton ? (
-          <Link to={ordersPath} className="orders-btn" id="ordersBtn">
-            Orders
-          </Link>
-        ) : null}
       </div>
+      {showOrdersButton ? (
+        <Link to={ordersPath} className="orders-btn" id="ordersBtn">
+          <span className="orders-btn-label">Orders</span>
+        </Link>
+      ) : null}
     </header>
   );
 }

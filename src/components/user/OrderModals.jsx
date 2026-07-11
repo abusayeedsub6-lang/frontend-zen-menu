@@ -62,7 +62,7 @@ export function GetBillModal({ isOpen, onConfirm, onCancel }) {
       }}
     >
       <div className="confirm-modal">
-        <div className="confirm-modal-message">Do you want to get the bill?</div>
+        <div className="confirm-modal-message">Do you want the bill?</div>
         <div className="confirm-modal-buttons">
           <button type="button" className="confirm-modal-btn no" onClick={onCancel}>
             No
