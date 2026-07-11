@@ -1,0 +1,118 @@
+  <header class="staff-header">
+    <div class="header-content">
+      <button class="back-btn" onclick="window.location.href='/staff/dashboard'">Back</button>
+      <h1>Orders by Me</h1>
+    </div>
+  </header>
+
+  <div class="bill-container">
+    <!-- Filters -->
+    <div class="bill-filters">
+      <input type="text" id="tableSearch" class="search-input" placeholder="Search table or order #">
+      <select id="statusFilter" class="status-filter">
+        <option value="all">All Orders</option>
+        <option value="new">New</option>
+        <option value="cash">Cash</option>
+        <option value="upi">UPI</option>
+        <option value="card">Card</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+    </div>
+
+    <!-- Orders List -->
+    <div class="orders-grid" id="ordersList">
+      <!-- Orders will be loaded here -->
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state" id="emptyState" style="display:none;">
+      <p>No orders found</p>
+      <p style="font-size: 14px; color: #9ca3af; margin-top: 8px;">You haven't placed any orders yet</p>
+    </div>
+  </div>
+
+  <!-- Order Detail Modal -->
+  <div class="modal-overlay" id="orderDetailModal" style="display:none;">
+    <div class="modal-content order-detail-modal">
+      <div class="modal-header">
+        <h3 id="modalOrderNumber">Order #00</h3>
+        <button class="close-modal-btn" id="closeOrderModal">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="order-info">
+          <p><strong>Table:</strong> <span id="modalTableNumber">-</span></p>
+          <p><strong>Date:</strong> <span id="modalOrderDate">-</span></p>
+          <p><strong>Status:</strong> <span id="modalOrderStatus">-</span></p>
+        </div>
+        <div class="order-items-list" id="modalOrderItems">
+          <!-- Order items will be displayed here -->
+        </div>
+        <div class="order-total-section">
+          <div class="total-row">
+            <span>Total:</span>
+            <span id="modalOrderTotal">₹0.00</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="cancelGetBillBtn">Close</button>
+        <button class="btn-primary" id="processBillBtn" style="display:none;">Get Bill</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Payment Method Selection Modal -->
+  <div class="modal-overlay" id="paymentMethodModal" style="display:none;">
+    <div class="modal-content payment-method-modal">
+      <div class="modal-header">
+        <h3>Select Payment Method</h3>
+        <button class="close-modal-btn" id="closePaymentMethodModal">×</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom: 12px; color: #6b7280; font-size: 13px;">How was this order paid?</p>
+        <div class="payment-method-options">
+          <button class="payment-method-btn" data-method="cash">
+            <span class="payment-icon">💵</span>
+            <span class="payment-label">Cash</span>
+          </button>
+          <button class="payment-method-btn" data-method="upi">
+            <span class="payment-icon">📱</span>
+            <span class="payment-label">UPI</span>
+          </button>
+          <button class="payment-method-btn" data-method="card">
+            <span class="payment-icon">💳</span>
+            <span class="payment-label">Card</span>
+          </button>
+        </div>
+      </div>
+      <div class="modal-footer" style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px;">
+        <button class="btn-secondary" id="cancelPaymentBtn">Cancel</button>
+        <button class="btn-primary" id="processPaymentBtn" disabled>Process</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cancel Order Confirmation Modal -->
+  <div class="cancel-modal-overlay" id="cancelModalOverlay">
+    <div class="cancel-modal">
+      <h3>Cancel Order</h3>
+      <p>Are you sure you want to cancel this order? This action cannot be undone.</p>
+      <div class="cancel-modal-buttons">
+        <button class="cancel-modal-btn no" id="cancelModalNo">No</button>
+        <button class="cancel-modal-btn yes" id="cancelModalYes">Yes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Remove Item Confirmation Modal -->
+  <div class="cancel-modal-overlay" id="removeItemModalOverlay">
+    <div class="cancel-modal compact">
+      <h3>Remove Item</h3>
+      <p id="removeItemModalMessage">You want to remove this dish?</p>
+      <div class="cancel-modal-buttons">
+        <button class="cancel-modal-btn no" id="removeItemModalNo">No</button>
+        <button class="cancel-modal-btn yes" id="removeItemModalYes">Yes</button>
+      </div>
+    </div>
+  </div>
+

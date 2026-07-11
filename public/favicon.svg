@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Background uses brand color #ff6b00 to match the app theme -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff6b00"/>
+      <stop offset="1" stop-color="#ff6b00"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="url(#bg)"/>
+  <!-- Plate -->
+  <circle cx="32" cy="34" r="16" fill="#ffffff" opacity="0.95"/>
+  <circle cx="32" cy="34" r="9" fill="#f3f4ff"/>
+  <!-- Fork -->
+  <rect x="20" y="16" width="3" height="20" rx="1.2" fill="#ffffff"/>
+  <rect x="19" y="16" width="1" height="6" rx="0.5" fill="#ffffff"/>
+  <rect x="21" y="16" width="1" height="6" rx="0.5" fill="#ffffff"/>
+  <rect x="23" y="16" width="1" height="6" rx="0.5" fill="#ffffff"/>
+  <!-- Knife -->
+  <path d="M42 16c-1.2 4.5-1.8 8.5-1.8 12.5 0 2.2 0.3 4.4 0.8 6.5H44c0.6-2.1 0.8-4.3 0.8-6.5C44.8 24.5 44.2 20.5 43 16z" fill="#ffffff"/>
+  <rect x="41" y="28" width="4" height="9" rx="1.3" fill="#e5e7eb"/>
+</svg>
+
+

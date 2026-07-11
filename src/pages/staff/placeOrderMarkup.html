@@ -1,0 +1,96 @@
+  <header class="staff-header">
+    <div class="header-content">
+      <button class="back-btn" onclick="window.location.href='/staff/dashboard'">Back</button>
+      <h1>Place Order</h1>
+      <div class="header-actions">
+        <button class="new-session-btn" id="newSessionBtn">New Order</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Active Sessions Bar -->
+  <div class="sessions-bar" id="sessionsBar">
+    <div class="sessions-list" id="sessionsList">
+      <!-- Sessions will be dynamically added here -->
+    </div>
+  </div>
+
+  <!-- Menu Filters Bar -->
+  <div class="menu-filters-container">
+    <div class="menu-filters">
+      <input type="text" id="menuSearch" class="menu-search" placeholder="Search Dishes">
+      <select id="categoryFilter" class="category-filter-select">
+        <option value="all">All Categories</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Current Session View -->
+  <div class="order-container" id="orderContainer">
+    <!-- Menu Browse Section -->
+    <div class="menu-section" id="menuSection">
+      <div class="menu-grid" id="menuGrid">
+        <!-- Menu items will be loaded here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- New Session Modal -->
+  <div class="modal-overlay" id="newSessionModal" style="display:none;">
+    <div class="modal-content">
+      <h3>New Order</h3>
+      <div class="form-group">
+        <label for="tableNumberInput">Table Number</label>
+        <input type="text" id="tableNumberInput" placeholder="e.g., 1, 2, 3 or 'Takeaway'" required>
+      </div>
+      <div class="modal-buttons">
+        <button class="btn-cancel" id="cancelNewSessionBtn">Cancel</button>
+        <button class="btn-primary" id="createSessionBtn">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Order Placed Modal -->
+  <div class="modal-overlay" id="orderPlacedModal" style="display:none;">
+    <div class="modal-content">
+      <div class="success-icon">✓</div>
+      <h3>Order Placed!</h3>
+      <p class="order-number-text">Order <span id="orderNumberDisplay"></span></p>
+      <p class="order-table-text">Table: <span id="orderTableDisplay"></span></p>
+      <div class="modal-buttons">
+        <button class="btn-primary" id="placeAnotherBtn">Place Another</button>
+        <button class="btn-secondary" id="backToDashboardBtn">Dashboard</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cart Modal -->
+  <div class="modal-overlay" id="cartModal" style="display:none;">
+    <div class="modal-content cart-modal">
+      <div class="cart-modal-header">
+        <h3>Cart</h3>
+        <span class="cart-count" id="modalCartCount">0</span>
+        <button class="close-modal-btn" id="closeCartModal">×</button>
+      </div>
+      <div class="cart-modal-body">
+        <div class="cart-items" id="modalCartItems">
+          <!-- Cart items will be displayed here -->
+        </div>
+        <div class="cart-footer">
+          <div class="cart-total">
+            <span>Total:</span>
+            <span id="modalCartTotal">₹0.00</span>
+          </div>
+          <button class="place-order-btn" id="modalPlaceOrderBtn" disabled>Place Order</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Kart Button -->
+  <button class="floating-kart-btn" id="floatingKartBtn" style="display: none;">
+    <span class="kart-icon">🛒</span>
+    <span class="kart-text">Kart</span>
+    <span class="kart-badge" id="kartBadge">0</span>
+  </button>
+

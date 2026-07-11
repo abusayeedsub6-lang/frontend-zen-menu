@@ -1,0 +1,243 @@
+<div class="layout">
+  <aside class="sidebar collapsed">
+    <nav>
+      <ul class="side-list">
+        <li>
+          <button class="sidebar-tab active" id="navCategoryBtn" title="Category Ops">
+            <span class="sidebar-icon">📁</span>
+            <span class="sidebar-text">Category Ops</span>
+          </button>
+        </li>
+        <li>
+          <button class="sidebar-tab" id="navDishBtn" title="Dish Ops">
+            <span class="sidebar-icon">🍽️</span>
+            <span class="sidebar-text">Dish Ops</span>
+          </button>
+        </li>
+        <li>
+          <button class="sidebar-tab" id="navOffersBtn" title="Offers">
+            <span class="sidebar-icon">🎁</span>
+            <span class="sidebar-text">Offers</span>
+          </button>
+        </li>
+        <li>
+          <button class="sidebar-tab" id="navThemeBtn" title="Theme">
+            <span class="sidebar-icon">🎨</span>
+            <span class="sidebar-text">Theme</span>
+          </button>
+        </li>
+        <li>
+          <button class="sidebar-tab" id="navStaffBtn" title="Staff Management">
+            <span class="sidebar-icon">👥</span>
+            <span class="sidebar-text">Staff Management</span>
+          </button>
+        </li>
+      </ul>
+    </nav>
+  </aside>
+
+  <div class="container">
+
+  <div class="card" id="categoryCard">
+    <h2>Category Operations</h2>
+    <div class="category-input-row">
+      <input id="newCategoryInput" placeholder="Category name" />
+      <button id="addCategoryActionBtn">Add Category</button>
+    </div>
+    <div class="table-container" id="categoryTableContainer">
+      <table id="categoryTable">
+        <thead>
+          <tr>
+            <th style="width: 40px;"></th>
+            <th>No.</th>
+            <th>Category Name</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="categoryTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" id="dishCard" style="display:none">
+    <h2>Add / Update Dish</h2>
+    <div class="dish-input-row">
+      <input id="name" placeholder="Dish name" required />
+      <select id="category" required>
+      </select>
+    </div>
+    <div class="dish-input-row">
+      <input id="price" placeholder="Price (₹)" required />
+      <input id="image" placeholder="Image URL" required />
+    </div>
+    <input id="description" placeholder="Dish description" />
+    <button id="saveBtn">Save Dish</button>
+  </div>
+
+  <div class="card" id="offersCard" style="display:none">
+    <h2>Offers</h2>
+    <input id="offerInput" placeholder="Offer % (e.g., 10)" />
+    <button id="offerSaveBtn">Save Offer</button>
+    <p id="offerText">No active offer</p>
+  </div>
+
+  <div class="card theme-card" id="themeCard" style="display:none">
+    <div class="theme-fields">
+      <div class="theme-field theme-field-name">
+        <label for="themeMenuName">Menu name</label>
+        <input id="themeMenuName" placeholder="e.g. ZEN MENU" />
+      </div>
+      <div class="theme-field theme-field-desc">
+        <label for="themeMenuDescription">Description</label>
+        <input id="themeMenuDescription" placeholder="e.g. Menu Without Menu Books" />
+      </div>
+      <div class="theme-field theme-field-color">
+        <label>User-side color</label>
+        <div class="theme-color-one-row">
+          <div class="theme-swatches" id="themeUserSideSwatches" aria-label="Pick user-side color">
+            <button type="button" class="theme-swatch" data-hex="#0f172a" style="background-color:#0f172a" title="Navy"></button>
+            <button type="button" class="theme-swatch" data-hex="#334155" style="background-color:#334155" title="Slate"></button>
+            <button type="button" class="theme-swatch" data-hex="#dc2626" style="background-color:#dc2626" title="Red"></button>
+            <button type="button" class="theme-swatch" data-hex="#16a34a" style="background-color:#16a34a" title="Green"></button>
+            <button type="button" class="theme-swatch" data-hex="#2563eb" style="background-color:#2563eb" title="Blue"></button>
+            <button type="button" class="theme-swatch" data-hex="#7c3aed" style="background-color:#7c3aed" title="Purple"></button>
+            <button type="button" class="theme-swatch" data-hex="#0d9488" style="background-color:#0d9488" title="Teal"></button>
+            <button type="button" class="theme-swatch" data-hex="#fef3c7" style="background-color:#fef3c7" title="Cream"></button>
+            <button type="button" class="theme-swatch" data-hex="#b91c1c" style="background-color:#b91c1c" title="Dark red"></button>
+            <button type="button" class="theme-swatch" data-hex="#0369a1" style="background-color:#0369a1" title="Sky"></button>
+            <button type="button" class="theme-swatch" data-hex="#5b21b6" style="background-color:#5b21b6" title="Violet"></button>
+            <button type="button" class="theme-swatch" data-hex="#be123c" style="background-color:#be123c" title="Rose"></button>
+          </div>
+          <div class="theme-color-row">
+            <input type="color" id="themeUserSideColor" value="#ff6b00" title="Pick color" />
+            <input type="text" id="themeUserSideColorHex" placeholder="#ff6b00" maxlength="7" />
+          </div>
+        </div>
+      </div>
+      <div class="theme-field theme-field-color">
+        <label>Staff-side color</label>
+        <div class="theme-color-one-row">
+          <div class="theme-swatches" id="themeStaffSideSwatches" aria-label="Pick staff-side color">
+            <button type="button" class="theme-swatch" data-hex="#0f172a" style="background-color:#0f172a" title="Navy"></button>
+            <button type="button" class="theme-swatch" data-hex="#334155" style="background-color:#334155" title="Slate"></button>
+            <button type="button" class="theme-swatch" data-hex="#dc2626" style="background-color:#dc2626" title="Red"></button>
+            <button type="button" class="theme-swatch" data-hex="#16a34a" style="background-color:#16a34a" title="Green"></button>
+            <button type="button" class="theme-swatch" data-hex="#2563eb" style="background-color:#2563eb" title="Blue"></button>
+            <button type="button" class="theme-swatch" data-hex="#7c3aed" style="background-color:#7c3aed" title="Purple"></button>
+            <button type="button" class="theme-swatch" data-hex="#0d9488" style="background-color:#0d9488" title="Teal"></button>
+            <button type="button" class="theme-swatch" data-hex="#fef3c7" style="background-color:#fef3c7" title="Cream"></button>
+            <button type="button" class="theme-swatch" data-hex="#b91c1c" style="background-color:#b91c1c" title="Dark red"></button>
+            <button type="button" class="theme-swatch" data-hex="#0369a1" style="background-color:#0369a1" title="Sky"></button>
+            <button type="button" class="theme-swatch" data-hex="#5b21b6" style="background-color:#5b21b6" title="Violet"></button>
+            <button type="button" class="theme-swatch" data-hex="#be123c" style="background-color:#be123c" title="Rose"></button>
+          </div>
+          <div class="theme-color-row">
+            <input type="color" id="themeStaffSideColor" value="#ff6b00" title="Pick color" />
+            <input type="text" id="themeStaffSideColorHex" placeholder="#ff6b00" maxlength="7" />
+          </div>
+        </div>
+      </div>
+      <div class="theme-field theme-field-color">
+        <label>Admin-side color</label>
+        <div class="theme-color-one-row">
+          <div class="theme-swatches" id="themeAdminSideSwatches" aria-label="Pick admin-side color">
+            <button type="button" class="theme-swatch" data-hex="#0f172a" style="background-color:#0f172a" title="Navy"></button>
+            <button type="button" class="theme-swatch" data-hex="#334155" style="background-color:#334155" title="Slate"></button>
+            <button type="button" class="theme-swatch" data-hex="#dc2626" style="background-color:#dc2626" title="Red"></button>
+            <button type="button" class="theme-swatch" data-hex="#16a34a" style="background-color:#16a34a" title="Green"></button>
+            <button type="button" class="theme-swatch" data-hex="#2563eb" style="background-color:#2563eb" title="Blue"></button>
+            <button type="button" class="theme-swatch" data-hex="#7c3aed" style="background-color:#7c3aed" title="Purple"></button>
+            <button type="button" class="theme-swatch" data-hex="#0d9488" style="background-color:#0d9488" title="Teal"></button>
+            <button type="button" class="theme-swatch" data-hex="#fef3c7" style="background-color:#fef3c7" title="Cream"></button>
+            <button type="button" class="theme-swatch" data-hex="#b91c1c" style="background-color:#b91c1c" title="Dark red"></button>
+            <button type="button" class="theme-swatch" data-hex="#0369a1" style="background-color:#0369a1" title="Sky"></button>
+            <button type="button" class="theme-swatch" data-hex="#5b21b6" style="background-color:#5b21b6" title="Violet"></button>
+            <button type="button" class="theme-swatch" data-hex="#be123c" style="background-color:#be123c" title="Rose"></button>
+          </div>
+          <div class="theme-color-row">
+            <input type="color" id="themeAdminSideColor" value="#ff6b00" title="Pick color" />
+            <input type="text" id="themeAdminSideColorHex" placeholder="#ff6b00" maxlength="7" />
+          </div>
+        </div>
+      </div>
+      <div class="theme-actions">
+        <button id="themeSaveBtn" class="theme-save-btn">Save Theme</button>
+        <button id="themeResetBtn" class="theme-reset-btn" type="button">Reset to default</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="menuItemsCard">
+    <div class="menu-items-header">
+      <h2>Menu Items</h2>
+      <input id="searchInput" placeholder="Search dish by name..." class="compact-search" />
+    </div>
+    <p id="notFound" style="display:none;color:#dc2626;margin:6px 0">Not Available</p>
+    <div class="table-container" id="tableContainer">
+      <table id="menuTable">
+        <thead>
+          <tr>
+            <th>No.</th>
+            <th>Name</th>
+            <th>Price</th>
+            <th>Category</th>
+            <th>Description</th>
+            <th>Dish Image</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" id="staffCard" style="display:none">
+    <h2>Staff Management</h2>
+    <div class="staff-input-row">
+      <input id="staffNameInput" placeholder="Staff Name" />
+      <input id="staffPinInput" placeholder="4-Digit PIN (e.g., 1234)" type="password" maxlength="4" pattern="[0-9]{4}" />
+      <input id="staffPhoneInput" placeholder="Phone (Optional)" />
+      <button id="addStaffBtn">Add Staff</button>
+    </div>
+    <div class="table-container" id="staffTableContainer">
+      <table id="staffTable">
+        <thead>
+          <tr>
+            <th>No.</th>
+            <th>Staff Name</th>
+            <th>Phone</th>
+            <th>Last Login</th>
+            <th>Created At</th>
+            <th>Pin</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="staffTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Staff Credentials Modal -->
+  <div id="staffCredentialsModal" class="modal-overlay" style="display:none;">
+    <div class="modal-content">
+      <h3>Staff Created Successfully!</h3>
+      <div class="credentials-display">
+        <div class="credential-item">
+          <label>Staff Name:</label>
+          <span id="modalStaffName"></span>
+        </div>
+        <div class="credential-item">
+          <label>PIN:</label>
+          <span id="modalStaffPin"></span>
+        </div>
+      </div>
+      <p class="warning-text">⚠️ Save these credentials securely and share with staff</p>
+      <div class="modal-buttons">
+        <button id="copyCredentialsBtn" class="btn-copy">Copy</button>
+        <button id="closeCredentialsModal" class="btn-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>

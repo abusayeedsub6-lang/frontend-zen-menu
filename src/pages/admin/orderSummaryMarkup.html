@@ -1,0 +1,63 @@
+<div class="orders-container">
+    <div class="header-section">
+      <div class="header-text">
+        <h1 class="header-title">Today's Orders</h1>
+      </div>
+      <button class="filter-button">
+        <svg class="filter-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/>
+          <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" stroke-width="1.5"/>
+        </svg>
+        Filter by date
+      </button>
+    </div>
+
+    <div class="orders-grid">
+      <!-- Orders will be dynamically loaded here -->
+    </div>
+  </div>
+
+  <!-- Payment Method Selection Modal -->
+  <div class="modal-overlay" id="paymentMethodModal" style="display:none;">
+    <div class="modal-content payment-method-modal">
+      <div class="modal-header">
+        <h3>Select Payment Method</h3>
+        <button class="close-modal-btn" id="closePaymentMethodModal">×</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom: 12px; color: #6b7280; font-size: 13px;">How was this order paid?</p>
+        <div class="payment-method-options">
+          <button class="payment-method-btn" data-method="cash">
+            <span class="payment-icon">💵</span>
+            <span class="payment-label">Cash</span>
+          </button>
+          <button class="payment-method-btn" data-method="upi">
+            <span class="payment-icon">📱</span>
+            <span class="payment-label">UPI</span>
+          </button>
+          <button class="payment-method-btn" data-method="card">
+            <span class="payment-icon">💳</span>
+            <span class="payment-label">Card</span>
+          </button>
+        </div>
+      </div>
+      <div class="modal-footer" style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px;">
+        <button class="btn-secondary" id="cancelPaymentBtn">Cancel</button>
+        <button class="btn-primary" id="processPaymentBtn" disabled>Process</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cancel Order Confirmation Modal -->
+  <div class="cancel-modal-overlay" id="cancelModalOverlay">
+    <div class="cancel-modal">
+      <h3>Cancel Order</h3>
+      <p>Are you sure you want to cancel this order? This action cannot be undone.</p>
+      <div class="cancel-modal-buttons">
+        <button class="cancel-modal-btn no" id="cancelModalNo">No</button>
+        <button class="cancel-modal-btn yes" id="cancelModalYes">Yes</button>
+      </div>
+    </div>
+  </div>
