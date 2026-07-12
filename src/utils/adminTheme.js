@@ -1,11 +1,12 @@
-export function applyAdminHeaderTheme(colorToUse) {
-  const headerEl = document.querySelector('header.admin-header');
-  if (!colorToUse || !/^#[0-9A-Fa-f]{6}$/.test(String(colorToUse).trim())) {
-    clearAdminHeaderTheme();
-    return;
-  }
+import {
+  DEFAULT_PRIMARY_COLOR,
+  resolveThemeColor,
+} from './menuThemeDefaults';
 
-  const bc = String(colorToUse).trim();
+export function applyAdminHeaderTheme(colorToUse) {
+  const bc = resolveThemeColor(colorToUse);
+  const headerEl = document.querySelector('header.admin-header');
+
   const r = parseInt(bc.slice(1, 3), 16);
   const g = parseInt(bc.slice(3, 5), 16);
   const b = parseInt(bc.slice(5, 7), 16);
@@ -25,11 +26,5 @@ export function applyAdminHeaderTheme(colorToUse) {
 }
 
 export function clearAdminHeaderTheme() {
-  const headerEl = document.querySelector('header.admin-header');
-  if (headerEl) {
-    headerEl.style.background = '#ff6b00';
-    headerEl.style.color = '#fff';
-  }
-  document.documentElement.style.removeProperty('--theme-primary-color');
-  document.documentElement.style.removeProperty('--theme-primary-color-dark');
+  applyAdminHeaderTheme(DEFAULT_PRIMARY_COLOR);
 }

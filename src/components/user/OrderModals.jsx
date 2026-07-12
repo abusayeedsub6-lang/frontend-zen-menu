@@ -75,3 +75,27 @@ export function GetBillModal({ isOpen, onConfirm, onCancel }) {
     </div>
   );
 }
+
+export function OrderSuccessModal({ isOpen }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="order-success-overlay show" id="orderSuccessModal" role="status" aria-live="polite">
+      <div className="order-success-modal">
+        <div className="order-success-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="36" height="36" fill="none">
+            <circle cx="12" cy="12" r="11" fill="currentColor" />
+            <path
+              d="M7.5 12.5l3 3 6-6.5"
+              stroke="#fff"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </div>
+        <div className="order-success-message">Order Placed Successfully</div>
+      </div>
+    </div>
+  );
+}

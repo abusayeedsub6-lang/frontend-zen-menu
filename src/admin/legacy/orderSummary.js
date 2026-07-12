@@ -113,7 +113,6 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
         sessionStorage.setItem('billRevealedOrders', JSON.stringify(revealed));
       }
     } catch (e) {
-      console.warn('Failed to save bill revealed order:', e);
     }
   }
 
@@ -125,7 +124,6 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
     
     // Log if order_number is missing for debugging
     if (displayOrderNumber === null || displayOrderNumber === undefined) {
-      console.warn('Order number is null/undefined for order:', order.id, '- Order UUID:', order.id);
     }
     
     const orderDisplayText = formatOrderNumber(displayOrderNumber);
@@ -423,12 +421,10 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
 
     // Remove existing subscription if any
     if (ordersSubscription) {
-      console.log('🔄 Removing existing subscription...');
       isCleaningUp = true; // Set flag to prevent reconnection
       try {
         await supabaseClient.removeChannel(ordersSubscription);
       } catch (error) {
-        console.warn('Warning removing channel:', error);
       }
       ordersSubscription = null;
       // Reset flag after a short delay to allow cleanup to complete
@@ -439,40 +435,9 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
 
     // Create a unique channel name to avoid conflicts
     const channelName = `orders_channel_${userId.substring(0, 8)}_${Date.now()}`;
-    console.log('🔧 Setting up real-time subscription with channel:', channelName);
-    console.log('👤 User ID:', userId);
-
-    // Create new subscription for orders
     const channel = supabaseClient.channel(channelName);
 
-    // DEBUG: First, listen to ALL orders (no filter) to test if events are coming through
-    // This helps us debug if the issue is with the filter or the subscription itself
-    channel.on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'orders'
-        // No filter - listen to all orders for debugging
-      },
-      (payload) => {
-        console.log('🔔 [DEBUG-ALL] INSERT event received (all orders):', payload);
-        console.log('📦 Order user_id:', payload.new?.user_id);
-        console.log('📦 Current user_id:', userId);
-        console.log('📦 Match?', payload.new?.user_id === userId);
-        
-        // Only process if it matches our user_id
-        if (payload.new?.user_id === userId) {
-          console.log('✅ Order matches our user_id, re-rendering...');
-          renderOrders();
-        } else {
-          console.log('⏭️ Order is for different user, ignoring');
-        }
-      }
-    );
-
     // Listen for INSERT events on orders table (filtered by user_id)
-    // Using the filter syntax that Supabase expects
     channel.on(
       'postgres_changes',
       {
@@ -481,35 +446,8 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
         table: 'orders',
         filter: `user_id=eq.${userId}`
       },
-      (payload) => {
-        console.log('🔔 [INSERT] New order received via real-time (filtered):', payload);
-        console.log('📦 Order data:', payload.new);
-        // Re-render orders to show the new one
+      () => {
         renderOrders();
-      }
-    );
-
-    // DEBUG: Listen to ALL UPDATE events first
-    channel.on(
-      'postgres_changes',
-      {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'orders'
-        // No filter - listen to all updates for debugging
-      },
-      (payload) => {
-        console.log('🔔 [DEBUG-ALL] UPDATE event received (all orders):', payload);
-        console.log('📦 Order user_id:', payload.new?.user_id || payload.old?.user_id);
-        console.log('📦 Current user_id:', userId);
-        
-        const orderUserId = payload.new?.user_id || payload.old?.user_id;
-        if (orderUserId === userId) {
-          console.log('✅ Update matches our user_id, re-rendering...');
-          renderOrders();
-        } else {
-          console.log('⏭️ Update is for different user, ignoring');
-        }
       }
     );
 
@@ -522,18 +460,12 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
         table: 'orders',
         filter: `user_id=eq.${userId}`
       },
-      (payload) => {
-        console.log('🔔 [UPDATE] Order updated via real-time (filtered):', payload);
-        console.log('📦 Old data:', payload.old);
-        console.log('📦 New data:', payload.new);
-        // Re-render orders when an order is updated (e.g., cancelled)
+      () => {
         renderOrders();
       }
     );
 
     // Listen for INSERT events on order_items table
-    // Note: We can't filter by user_id here since order_items doesn't have user_id
-    // Instead, we'll re-render and let the query filter by user_id
     channel.on(
       'postgres_changes',
       {
@@ -541,89 +473,49 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
         schema: 'public',
         table: 'order_items'
       },
-      (payload) => {
-        console.log('🔔 [INSERT] New order item received via real-time:', payload);
-        // Re-render orders when items are added
-        // The renderOrders function will filter by user_id, so we'll only see relevant orders
+      () => {
         renderOrders();
       }
     );
 
-    // Subscribe to the channel
-    // Store the channel reference
     ordersSubscription = channel;
     
-    // Subscribe and handle status
     channel.subscribe((status, err) => {
-      console.log('📡 Subscription status changed:', status);
-      console.log('📡 Channel state:', channel.state);
-      
-      if (status === 'SUBSCRIBED') {
-        console.log('✅ Real-time subscription ACTIVE for orders and order_items');
-        console.log('👂 Listening for changes on user_id:', userId);
-        console.log('📋 Listening to: orders (INSERT/UPDATE), order_items (INSERT)');
-        console.log('🧪 Debug mode: Also listening to ALL orders (no filter) for testing');
-      } else if (status === 'CHANNEL_ERROR') {
-        console.error('❌ Error subscribing to orders channel:', err);
-        console.error('Error details:', JSON.stringify(err, null, 2));
-        // Only reconnect if we're not in the middle of cleaning up
+      if (status === 'CHANNEL_ERROR') {
+        console.error('Error subscribing to orders channel:', err);
         if (!isCleaningUp) {
           setTimeout(() => {
-            console.log('🔄 Attempting to reconnect real-time subscription in 5 seconds...');
             setupRealtimeSubscription();
           }, 5000);
         }
       } else if (status === 'TIMED_OUT') {
-        console.warn('⚠️ Real-time subscription timed out');
-        // Only reconnect if we're not in the middle of cleaning up
         if (!isCleaningUp) {
           setTimeout(() => {
-            console.log('🔄 Reconnecting in 3 seconds...');
             setupRealtimeSubscription();
           }, 3000);
         }
       } else if (status === 'CLOSED') {
-        console.warn('⚠️ Real-time subscription closed');
-        // Only reconnect if we're not in the middle of cleaning up
-        // This prevents infinite loops when we intentionally close a channel
         if (!isCleaningUp) {
           setTimeout(() => {
-            console.log('🔄 Reconnecting in 3 seconds...');
             setupRealtimeSubscription();
           }, 3000);
-        } else {
-          console.log('ℹ️ Channel closed during cleanup, not reconnecting');
         }
-      } else {
-        console.log('📡 Real-time subscription status:', status);
-        if (err) {
-          console.error('Subscription error:', err);
-        }
+      } else if (err) {
+        console.error('Subscription error:', err);
       }
     });
     
-    // Also log the channel object for debugging
-    console.log('📦 Channel object:', channel);
-    console.log('📦 Channel topic:', channel.topic);
-
-    // Clear any existing health check
     if (subscriptionHealthCheck) {
       clearInterval(subscriptionHealthCheck);
     }
     
-    // Set up periodic health check to ensure subscription is still active
     subscriptionHealthCheck = setInterval(() => {
       if (ordersSubscription) {
         const state = ordersSubscription.state;
-        if (state === 'joined' || state === 'joining') {
-          // Subscription is active or connecting
-          console.log('✅ Real-time subscription health check: Active (state:', state + ')');
-        } else {
-          console.warn('⚠️ Real-time subscription appears inactive (state:', state + '), reconnecting...');
+        if (state !== 'joined' && state !== 'joining') {
           setupRealtimeSubscription();
         }
-      } else {
-        console.warn('⚠️ Real-time subscription is null, reconnecting...');
+      } else if (!isCleaningUp) {
         setupRealtimeSubscription();
       }
     }, 30000); // Check every 30 seconds
@@ -637,11 +529,9 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
       subscriptionHealthCheck = null;
     }
     if (ordersSubscription && supabaseClient) {
-      console.log('Cleaning up real-time subscription...');
       try {
         supabaseClient.removeChannel(ordersSubscription);
       } catch (error) {
-        console.warn('Error during cleanup:', error);
       }
       ordersSubscription = null;
     }
@@ -653,8 +543,6 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
 
   // Initialize order management
   async function initialize() {
-    console.log('🚀 Initializing order management module...');
-    
     // Wait for Supabase client to be available
     let retries = 0;
     while (!getSupabaseClient() && retries < 50) {
@@ -668,16 +556,12 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
     }
 
     supabaseClient = getSupabaseClient();
-    console.log('✅ Supabase client obtained');
-
     // Wait for user authentication
     const userId = await getCurrentUserId();
     if (!userId) {
       console.error('❌ User ID not available - user may not be authenticated');
       return;
     }
-    console.log('✅ User authenticated:', userId);
-
     // Wait a bit more for the orders grid to be loaded in the DOM
     let gridRetries = 0;
     while (!document.querySelector('.orders-grid') && gridRetries < 20) {
@@ -686,21 +570,17 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
     }
 
     if (!document.querySelector('.orders-grid')) {
-      console.warn('⚠️ Orders grid not found in DOM, but continuing...');
     }
 
     // Render initial orders
-    console.log('📋 Rendering initial orders...');
     await renderOrders();
 
     // Set up real-time subscription
-    console.log('🔔 Setting up real-time subscription...');
     await setupRealtimeSubscription();
     
     // Set up modal button event listeners
     setupModalEventListeners();
     
-    console.log('✅ Order management module initialized');
   }
 
   // Set up event listeners for cancel modal buttons
@@ -715,12 +595,9 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
       newYesBtn.addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
-        console.log('Cancel modal Yes button clicked');
         confirmCancelOrder();
       });
-      console.log('✅ Cancel modal Yes button event listener attached');
     } else {
-      console.warn('⚠️ Cancel modal Yes button not found');
     }
     
     if (cancelModalNo) {
@@ -730,12 +607,9 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
       newNoBtn.addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
-        console.log('Cancel modal No button clicked');
         closeCancelModal();
       });
-      console.log('✅ Cancel modal No button event listener attached');
     } else {
-      console.warn('⚠️ Cancel modal No button not found');
     }
 
     // Payment method modal event listeners
@@ -791,10 +665,8 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
     if (processPaymentBtn) {
       processPaymentBtn.addEventListener('click', function() {
         if (selectedPaymentMethod && pendingPaymentOrderId) {
-          console.log('Processing payment with method:', selectedPaymentMethod);
           processPaymentWithMethod(selectedPaymentMethod);
         } else {
-          console.warn('Cannot process: selectedPaymentMethod=', selectedPaymentMethod, 'pendingPaymentOrderId=', pendingPaymentOrderId);
         }
       });
     }
@@ -815,13 +687,7 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
   // Test function to verify subscription is working
   async function testSubscription() {
     const userId = await getCurrentUserId();
-    console.log('🧪 Testing subscription...');
-    console.log('User ID:', userId);
-    console.log('Supabase Client:', supabaseClient ? 'Available' : 'Not available');
-    console.log('Subscription:', ordersSubscription ? 'Active' : 'Not active');
     if (ordersSubscription) {
-      console.log('Subscription state:', ordersSubscription.state);
-      console.log('Subscription channel:', ordersSubscription.topic);
     }
     return {
       userId,
@@ -883,7 +749,6 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
       e.stopPropagation();
       const orderId = e.target.getAttribute('data-order-id');
       if (orderId) {
-        console.log('Cancel button clicked via event delegation for order:', orderId);
         handleCancelOrder(orderId);
       }
     }
@@ -891,8 +756,6 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
 
   // Handle Cancel Order
   async function handleCancelOrder(orderId) {
-    console.log('handleCancelOrder called for order:', orderId);
-    
     // Close menu
     document.querySelectorAll('.order-menu-dropdown').forEach(m => {
       m.classList.remove('show');
@@ -901,7 +764,6 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
     // Show confirmation modal
     const modal = document.getElementById('cancelModalOverlay');
     if (modal) {
-      console.log('Showing cancel modal for order:', orderId);
       modal.classList.add('show');
       modal.setAttribute('data-order-id', orderId);
     } else {
@@ -997,8 +859,6 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
       }
 
       const currentPaymentMethod = orderData.payment_method;
-      console.log('Current payment method in database:', currentPaymentMethod);
-      
       // Admin/Staff can always override payment method when processing Get Bill
       // This allows admin/staff to update payment method even if customer already selected something
       // (e.g., customer selected "Pay at Counter", admin/staff can now set it to Cash/UPI/Card)
@@ -1006,8 +866,6 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
       // Use the selected payment method directly (cash, upi, or card)
       // Database constraint now allows: 'unpaid_new', 'unpaid_pay_at_counter', 'upi', 'cash', 'card'
       const newPaymentMethod = paymentMethod;
-      console.log('Updating payment method to:', newPaymentMethod, 'for order:', orderId);
-
       // Try RPC function first
       let updateSucceeded = false;
       try {
@@ -1018,12 +876,9 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
         
         if (!rpcError && rpcData === true) {
           updateSucceeded = true;
-          console.log('Payment method updated via RPC:', newPaymentMethod);
         } else if (rpcError) {
-          console.warn('RPC error:', rpcError);
         }
       } catch (rpcException) {
-        console.warn('RPC function failed, trying direct update:', rpcException);
       }
 
       // Fallback to direct update
@@ -1038,7 +893,6 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
           alert('Error updating payment method: ' + (updateError.message || 'Unknown error') + '. Please try again.');
           return;
         } else {
-          console.log('Payment method updated via direct update:', newPaymentMethod);
         }
       }
 
@@ -1053,7 +907,6 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
 
   // Confirm and cancel order
   async function confirmCancelOrder() {
-    console.log('confirmCancelOrder called');
     const modal = document.getElementById('cancelModalOverlay');
     if (!modal) {
       console.error('Cancel modal not found');
@@ -1066,8 +919,6 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
       return;
     }
     
-    console.log('Cancelling order:', orderId);
-
     const yesBtn = modal.querySelector('.cancel-modal-btn.yes');
     if (yesBtn) {
       yesBtn.disabled = true;
@@ -1098,18 +949,13 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
         
         if (!rpcError && (rpcData === true || rpcData === null)) {
           updateSucceeded = true;
-          console.log('Order cancelled successfully via RPC');
         } else if (rpcError) {
-          console.warn('RPC function failed or does not exist:', rpcError.message);
         }
       } catch (rpcException) {
-        console.warn('RPC function exception (may not exist):', rpcException.message);
       }
 
       // Fallback to direct update with user_id filter to ensure RLS compliance
       if (!updateSucceeded) {
-        console.log('Attempting direct update for order:', orderId, 'user:', userId);
-        
         // First, verify the order exists and belongs to this user
         const { data: orderVerify, error: verifyError } = await supabaseClient
           .from('orders')
@@ -1130,7 +976,6 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
         
         // Check if already cancelled
         if (orderVerify.cancelled === true) {
-          console.log('Order is already cancelled');
           updateSucceeded = true;
         } else {
           // Proceed with update
@@ -1166,9 +1011,7 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
             const updatedOrder = updateData[0];
             if (updatedOrder.cancelled === true) {
               updateSucceeded = true;
-              console.log('Order cancelled successfully via direct update (verified)');
             } else {
-              console.warn('Update returned data but cancelled status is false - verifying...');
               // Try to verify by reading back
               const { data: recheckData, error: recheckError } = await supabaseClient
                 .from('orders')
@@ -1179,17 +1022,14 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
               
               if (!recheckError && recheckData && recheckData.cancelled === true) {
                 updateSucceeded = true;
-                console.log('Order cancelled - verified by recheck');
               } else {
                 // Update might have succeeded but we can't verify - assume success if no error
                 updateSucceeded = true;
-                console.log('Update completed (assuming success - RLS may block verification)');
               }
             }
           } else {
             // Update returned no data - this is common with RLS
             // If there's no error, the update likely succeeded
-            console.log('Update returned no data (RLS may block SELECT) - assuming success');
             updateSucceeded = true;
             
             // Try to verify by reading back (optional verification)
@@ -1202,13 +1042,10 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
                 .single();
               
               if (!recheckError && recheckData && recheckData.cancelled === true) {
-                console.log('Order cancellation verified by recheck');
               } else if (recheckError) {
-                console.log('Could not verify (RLS may block read):', recheckError.message);
                 // Still assume success since update had no error
               }
             } catch (verifyErr) {
-              console.log('Verification check failed (non-critical):', verifyErr.message);
               // Still assume success since update had no error
             }
           }

@@ -362,27 +362,7 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
     const notFoundText = document.getElementById('notFound');
     const saveBtn = document.getElementById('saveBtn');
 
-    if (!saveBtn || !searchInput) return; // Elements not loaded yet
-
-    saveBtn.addEventListener('click', saveDish);
-    searchInput.addEventListener('input', () => renderMenu(searchInput.value.trim()));
-
-    // Remove error state when user starts typing/selecting
-    [nameInput, priceInput, imageInput, categoryInput].forEach(field => {
-      if (field) {
-        if (field.tagName === 'SELECT') {
-          field.addEventListener('change', function() {
-            this.classList.remove('error');
-          });
-        } else {
-          field.addEventListener('input', function() {
-            this.classList.remove('error');
-          });
-        }
-      }
-    });
-
-    // Navigation buttons for cards
+    // Navigation buttons for cards (URL-synced via React Router)
     const navCategoryBtn = document.getElementById('navCategoryBtn');
     const navDishBtn = document.getElementById('navDishBtn');
     const navOffersBtn = document.getElementById('navOffersBtn');
@@ -395,6 +375,14 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
     const themeCard = document.getElementById('themeCard');
     const staffCard = document.getElementById('staffCard');
     const menuItemsCard = document.getElementById('menuItemsCard');
+
+    const MANAGE_MENU_TABS = {
+      category: { cardId: 'categoryCard', buttonId: 'navCategoryBtn' },
+      dish: { cardId: 'dishCard', buttonId: 'navDishBtn' },
+      offers: { cardId: 'offersCard', buttonId: 'navOffersBtn' },
+      theme: { cardId: 'themeCard', buttonId: 'navThemeBtn' },
+      staff: { cardId: 'staffCard', buttonId: 'navStaffBtn' },
+    };
 
     function setActiveNavButton(buttonId) {
       [navCategoryBtn, navDishBtn, navOffersBtn, navThemeBtn, navStaffBtn].forEach(btn => {
@@ -432,36 +420,65 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
       setTimeout(() => updateTableContainerHeight(), 0);
     }
 
-    if (navCategoryBtn) {
-      navCategoryBtn.addEventListener('click', () => {
-        showCard('categoryCard');
+    function activateTab(tab) {
+      const config = MANAGE_MENU_TABS[tab] || MANAGE_MENU_TABS.category;
+      showCard(config.cardId);
+      if (tab === 'category' || !MANAGE_MENU_TABS[tab]) {
         renderCategories();
-      });
+      } else if (tab === 'dish') {
+        updateCategoryDropdown();
+        renderMenu();
+      } else if (tab === 'staff') {
+        loadStaff();
+      }
+    }
+
+    function navigateToTab(tab) {
+      if (typeof window.__manageMenuNavigate === 'function') {
+        window.__manageMenuNavigate(tab);
+        return;
+      }
+      activateTab(tab);
+    }
+
+    if (navCategoryBtn) {
+      navCategoryBtn.addEventListener('click', () => navigateToTab('category'));
     }
     if (navDishBtn) {
-      navDishBtn.addEventListener('click', () => {
-        showCard('dishCard');
-        updateCategoryDropdown();
-      });
+      navDishBtn.addEventListener('click', () => navigateToTab('dish'));
     }
     if (navOffersBtn) {
-      navOffersBtn.addEventListener('click', () => showCard('offersCard'));
+      navOffersBtn.addEventListener('click', () => navigateToTab('offers'));
     }
     if (navThemeBtn) {
-      navThemeBtn.addEventListener('click', () => showCard('themeCard'));
+      navThemeBtn.addEventListener('click', () => navigateToTab('theme'));
     }
-    
     if (navStaffBtn) {
-      navStaffBtn.addEventListener('click', () => {
-        showCard('staffCard');
-        loadStaff();
+      navStaffBtn.addEventListener('click', () => navigateToTab('staff'));
+    }
+
+    // Always register tab activation — even if dish form controls are missing
+    window.manageMenuActivateTab = activateTab;
+
+    if (saveBtn && searchInput) {
+      saveBtn.addEventListener('click', saveDish);
+      searchInput.addEventListener('input', () => renderMenu(searchInput.value.trim()));
+
+      // Remove error state when user starts typing/selecting
+      [nameInput, priceInput, imageInput, categoryInput].forEach(field => {
+        if (field) {
+          if (field.tagName === 'SELECT') {
+            field.addEventListener('change', function() {
+              this.classList.remove('error');
+            });
+          } else {
+            field.addEventListener('input', function() {
+              this.classList.remove('error');
+            });
+          }
+        }
       });
     }
-    
-    // Set initial active state (Category Ops is shown by default)
-    setActiveNavButton('navCategoryBtn');
-    showCard('categoryCard');
-    renderCategories();
 
     // Category ops
     const newCategoryInput = document.getElementById('newCategoryInput');
@@ -634,7 +651,6 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
         updateStaffSideSwatchSelection();
         updateAdminSideSwatchSelection();
       } catch (e) {
-        console.warn('Theme load failed (table may not exist):', e);
         if (themeMenuName) themeMenuName.value = 'ZEN MENU';
         if (themeMenuDescription) themeMenuDescription.value = 'Menu Without Menu Books';
         if (themeUserSideColor) themeUserSideColor.value = '#ff6b00';
@@ -1334,29 +1350,25 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
       return; // Don't interfere with orders page
     }
     const sidebar = manageMenuSection.querySelector('.layout .sidebar');
-    if (header && sidebar) {
-      const headerHeight = header.offsetHeight;
-      sidebar.style.top = headerHeight + 'px';
-      sidebar.style.height = `calc(100vh - ${headerHeight}px)`;
+    if (header) {
+      const headerHeight = header.offsetHeight || 64;
+      document.documentElement.style.setProperty('--admin-header-height', `${headerHeight}px`);
+      if (sidebar) {
+        sidebar.style.top = `${headerHeight}px`;
+        sidebar.style.height = `calc(100vh - ${headerHeight}px)`;
+      }
     }
   }
 
-  // Update container width based on sidebar state
-  // Only affects manage menu section, not the orders section
+  // Keep manage-menu content width fixed; sidebar expands as an overlay
   function updateContainerWidth() {
     const manageMenuSection = document.getElementById('manageMenuSection');
-    // Only proceed if manage menu section exists and is visible
     if (!manageMenuSection || manageMenuSection.style.display === 'none') {
-      return; // Don't interfere with orders page
+      return;
     }
-    const sidebar = manageMenuSection.querySelector('.layout .sidebar');
     const container = manageMenuSection.querySelector('.layout .container');
-    if (container && sidebar) {
-      if (sidebar.classList.contains('collapsed')) {
-        container.classList.add('full-width');
-      } else {
-        container.classList.remove('full-width');
-      }
+    if (container) {
+      container.classList.add('full-width');
     }
   }
 
@@ -1497,7 +1509,6 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
           filter: `user_id=eq.${userId}`
         },
         async (payload) => {
-          console.log('Category change detected:', payload);
           await loadCategories();
         }
       )
@@ -1514,7 +1525,6 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
           filter: `user_id=eq.${userId}`
         },
         async (payload) => {
-          console.log('Dish change detected:', payload);
           await loadDishes();
         }
       )
@@ -1928,49 +1938,54 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
   // Expose functions to window for onclick handlers and external access
   window.manageMenuModule = {
     togglePinVisibility: togglePinVisibility,
-    initialize: async function() {
+    initialize: async function(initialTab = 'category') {
+      const tab = isManageMenuTab(initialTab) ? initialTab : 'category';
       initializeUI();
+      // Show the URL tab immediately (before data finishes loading)
+      if (typeof window.manageMenuActivateTab === 'function') {
+        window.manageMenuActivateTab(tab);
+      }
+      // Position sidebar immediately so it never flashes under the header
+      setSidebarPosition();
       await initializeData();
-      
-      // Small delay to ensure DOM is ready
-      setTimeout(() => {
+
+      if (manageMenuResizeHandler) {
+        window.removeEventListener('resize', manageMenuResizeHandler);
+      }
+      manageMenuResizeHandler = () => {
         setSidebarPosition();
-        if (manageMenuResizeHandler) {
-          window.removeEventListener('resize', manageMenuResizeHandler);
-        }
-        manageMenuResizeHandler = () => {
-          setSidebarPosition();
-          updateTableContainerHeight();
-        };
-        window.addEventListener('resize', manageMenuResizeHandler);
-        
-        // Initialize sidebar behavior
-        initializeSidebarBehavior();
-        
-        // Initialize sidebar state on load
-        const manageMenuSection = document.getElementById('manageMenuSection');
-        const sidebar = manageMenuSection ? manageMenuSection.querySelector('.layout .sidebar') : null;
-        const container = manageMenuSection ? manageMenuSection.querySelector('.layout .container') : null;
-        
-        if (sidebar) {
-          if (window.innerWidth <= 768) {
-            sidebar.classList.add('mobile-hidden');
-          } else {
-            // Desktop: ensure collapsed state and update container width
-            sidebar.classList.add('collapsed');
-            sidebar.classList.remove('mobile-hidden');
-            if (container) {
-              container.classList.add('full-width');
-            }
-            updateContainerWidth();
+        updateTableContainerHeight();
+      };
+      window.addEventListener('resize', manageMenuResizeHandler);
+
+      initializeSidebarBehavior();
+
+      const manageMenuSection = document.getElementById('manageMenuSection');
+      const sidebar = manageMenuSection ? manageMenuSection.querySelector('.layout .sidebar') : null;
+      const container = manageMenuSection ? manageMenuSection.querySelector('.layout .container') : null;
+
+      if (sidebar) {
+        if (window.innerWidth <= 768) {
+          sidebar.classList.add('mobile-hidden');
+        } else {
+          sidebar.classList.add('collapsed');
+          sidebar.classList.remove('mobile-hidden');
+          if (container) {
+            container.classList.add('full-width');
           }
+          updateContainerWidth();
         }
-        
-        // Update table container height after initialization
-        setTimeout(() => {
-          updateTableContainerHeight();
-        }, 100);
-      }, 10);
+      }
+
+      // Re-apply after data load so lists render for the active tab
+      if (typeof window.manageMenuActivateTab === 'function') {
+        window.manageMenuActivateTab(tab);
+      }
+
+      requestAnimationFrame(() => {
+        setSidebarPosition();
+        updateTableContainerHeight();
+      });
     },
     initializeData: initializeData,
     setupRealtimeSubscriptions: setupRealtimeSubscriptions,
@@ -1984,12 +1999,33 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
     loadDishes: loadDishes,
     loadStaff: loadStaff,
     createStaff: createStaff,
-    deleteStaff: deleteStaff
+    deleteStaff: deleteStaff,
+    activateTab: function(tab) {
+      if (typeof window.manageMenuActivateTab === 'function') {
+        window.manageMenuActivateTab(tab);
+      }
+    },
   };
 
-export async function bootstrapManageMenu() {
+const MANAGE_MENU_TAB_SLUGS = ['category', 'dish', 'offers', 'theme', 'staff'];
+
+export function isManageMenuTab(tab) {
+  return MANAGE_MENU_TAB_SLUGS.includes(tab);
+}
+
+export function activateManageMenuTab(tab) {
+  const nextTab = isManageMenuTab(tab) ? tab : 'category';
+  if (window.manageMenuModule?.activateTab) {
+    window.manageMenuModule.activateTab(nextTab);
+  } else if (typeof window.manageMenuActivateTab === 'function') {
+    window.manageMenuActivateTab(nextTab);
+  }
+}
+
+export async function bootstrapManageMenu(initialTab = 'category') {
   if (window.manageMenuModule) {
-    await window.manageMenuModule.initialize();
+    const tab = isManageMenuTab(initialTab) ? initialTab : 'category';
+    await window.manageMenuModule.initialize(tab);
     await window.manageMenuModule.setupRealtimeSubscriptions();
   }
 }
@@ -2013,4 +2049,5 @@ export function teardownManageMenu() {
     manageMenuResizeHandler = null;
   }
   manageMenuSidebarInitialized = false;
+  delete window.manageMenuActivateTab;
 }

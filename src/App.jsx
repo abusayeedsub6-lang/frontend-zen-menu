@@ -39,7 +39,8 @@ export default function App() {
             >
               <Route index element={<OrderSummaryPage />} />
               <Route path="dashboard" element={<DashboardPage />} />
-              <Route path="manage-menu" element={<ManageMenuPage />} />
+              <Route path="manage-menu" element={<Navigate to="/admin/manage-menu/category" replace />} />
+              <Route path="manage-menu/:tab" element={<ManageMenuPage />} />
             </Route>
 
             <Route path="/menu" element={<MenuPage />} />

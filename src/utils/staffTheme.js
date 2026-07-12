@@ -1,8 +1,10 @@
-export function applyStaffTheme(colorToUse) {
-  if (!colorToUse) return;
+import {
+  DEFAULT_PRIMARY_COLOR,
+  resolveThemeColor,
+} from './menuThemeDefaults';
 
-  const bc = String(colorToUse).trim();
-  if (!/^#[0-9A-Fa-f]{6}$/.test(bc)) return;
+export function applyStaffTheme(colorToUse) {
+  const bc = resolveThemeColor(colorToUse, DEFAULT_PRIMARY_COLOR);
 
   const r = parseInt(bc.slice(1, 3), 16);
   const g = parseInt(bc.slice(3, 5), 16);
@@ -17,6 +19,5 @@ export function applyStaffTheme(colorToUse) {
 }
 
 export function clearStaffTheme() {
-  document.documentElement.style.removeProperty('--theme-primary-color');
-  document.documentElement.style.removeProperty('--theme-primary-color-dark');
+  applyStaffTheme(DEFAULT_PRIMARY_COLOR);
 }
