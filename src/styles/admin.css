@@ -1,6 +1,8 @@
 :root {
   --theme-primary-color: #ff6b00;
   --theme-primary-color-dark: #e55a00;
+  /* Matches admin header (12px padding + 40px profile icon) before JS measures */
+  --admin-header-height: 64px;
 }
 
 .admin-shell {
@@ -360,7 +362,8 @@ thead {
   width: 220px;
   position: fixed;
   left: 0;
-  top: 0; /* will be set dynamically to match header height */
+  top: var(--admin-header-height, 64px);
+  height: calc(100vh - var(--admin-header-height, 64px));
   overflow: hidden;
   z-index: 50;
   transition: width 0.3s ease;
@@ -401,22 +404,35 @@ thead {
   white-space: nowrap;
 }
 .sidebar-icon {
-  font-size: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   width: 20px;
-  text-align: center;
+  height: 20px;
+  color: var(--theme-primary-color, #ff6b00);
+}
+
+.sidebar-icon svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.side-list button.active .sidebar-icon {
+  color: #fff;
 }
 .sidebar-text {
   transition: opacity 0.2s ease;
 }
 .sidebar.collapsed .sidebar-text {
-  opacity: 0;
-  width: 0;
-  overflow: hidden;
+  display: none;
 }
 .sidebar.collapsed .side-list button {
   justify-content: center;
+  align-items: center;
   padding: 8px;
+  gap: 0;
 }
 .sidebar.collapsed .side-list button::after {
   content: attr(title);
@@ -546,10 +562,17 @@ thead {
 .dish-input-row {
   display: flex;
   gap: 8px;
+  align-items: center;
 }
 .dish-input-row input,
 .dish-input-row select {
   flex: 1;
+  margin: 6px 0;
+}
+.dish-input-row button {
+  width: auto;
+  min-width: 140px;
+  flex-shrink: 0;
   margin: 6px 0;
 }
 
@@ -815,9 +838,11 @@ thead {
   .dish-input-row {
     flex-direction: column;
     gap: 0;
+    align-items: stretch;
   }
   
-  .category-input-row button {
+  .category-input-row button,
+  .dish-input-row button {
     width: 100%;
     min-width: auto;
   }
@@ -945,6 +970,19 @@ thead {
   }
 }
 
+/* Nested layout for manage menu — outer shell must be full-bleed so
+   sidebar inset is applied only once (by the inner manage-menu container). */
+.layout .container.manage-menu-active,
+.layout .container:has(#manageMenuSection) {
+  margin-left: 0;
+  margin-right: 0;
+  max-width: 100%;
+  width: 100%;
+  padding: 0;
+  align-items: stretch;
+  overflow: hidden;
+}
+
 /* Nested layout for manage_menu.html - reset container margins since it's inside main container */
 #manageMenuSection {
   width: 100%;
@@ -971,13 +1009,18 @@ thead {
 #manageMenuSection .layout .sidebar {
   position: fixed;
   left: 0;
+  top: var(--admin-header-height, 64px);
+  height: calc(100vh - var(--admin-header-height, 64px));
   z-index: 50;
 }
 
-#manageMenuSection .layout .container {
+/* Content stays put — expanded sidebar overlays instead of pushing layout */
+#manageMenuSection .layout .container,
+#manageMenuSection .layout .sidebar.collapsed ~ .container,
+#manageMenuSection .layout .container.full-width {
+  max-width: calc(100% - 152px);
   margin-left: 76px;
   margin-right: 76px;
-  max-width: calc(100% - 152px);
   width: calc(100% - 152px);
   transition: none;
   padding: 16px;
@@ -992,28 +1035,7 @@ thead {
   height: calc(100vh - 60px);
 }
 
-#manageMenuSection .layout .container > .card {
-  width: 100%;
-  max-width: 900px;
-  align-self: center;
-}
-
-#manageMenuSection .layout .sidebar.collapsed ~ .container,
-#manageMenuSection .layout .container.full-width {
-  max-width: calc(100% - 152px);
-  margin-left: 76px;
-  margin-right: 76px;
-  width: calc(100% - 152px);
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  flex: 1;
-  min-height: 0;
-  max-height: calc(100vh - 60px);
-  height: calc(100vh - 60px);
-}
-
+#manageMenuSection .layout .container > .card,
 #manageMenuSection .layout .sidebar.collapsed ~ .container > .card,
 #manageMenuSection .layout .container.full-width > .card {
   width: 100%;

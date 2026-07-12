@@ -2,6 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { applyAdminHeaderTheme, clearAdminHeaderTheme } from '../utils/adminTheme';
+import { ensureDefaultMenuTheme } from '../services/menu';
+import { DEFAULT_PRIMARY_COLOR, resolveThemeColor } from '../utils/menuThemeDefaults';
 import {
   adminOAuthRedirectUrl,
   clearOAuthParamsFromUrl,
@@ -43,16 +45,18 @@ export function AuthProvider({ children }) {
   const applyThemeForUser = useCallback(async (userId) => {
     if (!userId || !supabase) return;
     try {
+      await ensureDefaultMenuTheme(userId);
       const { data, error } = await supabase
         .from('menu_theme')
         .select('admin_side_color, button_color')
         .eq('user_id', userId)
         .maybeSingle();
       if (error) throw error;
-      const colorToUse = data?.admin_side_color || data?.button_color || null;
-      applyAdminHeaderTheme(colorToUse);
+      applyAdminHeaderTheme(
+        resolveThemeColor(data?.admin_side_color, data?.button_color, DEFAULT_PRIMARY_COLOR),
+      );
     } catch {
-      clearAdminHeaderTheme();
+      applyAdminHeaderTheme(DEFAULT_PRIMARY_COLOR);
     }
   }, []);
 

@@ -41,10 +41,9 @@ export default function CartModal({
 
                 return (
                   <div key={item.name} className="cart-item">
+                    <div className="cart-item-serial">{serialNumber}.</div>
                     <div className="cart-item-info">
-                      <strong>
-                        {serialNumber}. {item.name}
-                      </strong>
+                      <strong>{item.name}</strong>
                       <span>
                         {price.toFixed(2)} × {item.qty}
                       </span>

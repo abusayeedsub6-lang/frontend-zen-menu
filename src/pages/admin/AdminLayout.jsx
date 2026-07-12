@@ -3,6 +3,11 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { applyAdminHeaderTheme } from '../../utils/adminTheme';
+import { ensureDefaultMenuTheme } from '../../services/menu';
+import {
+  DEFAULT_PRIMARY_COLOR,
+  resolveThemeColor,
+} from '../../utils/menuThemeDefaults';
 import { usePageTitle } from '../../hooks/usePageTitle';
 import '../../styles/admin.css';
 import '../../styles/admin-embedded.css';
@@ -76,7 +81,7 @@ function ProfileDropdown({ user, onSignOut }) {
           style={{ padding: '8px 12px', borderTop: '1px solid #e5e7eb', cursor: 'pointer' }}
           onClick={() => {
             setOpen(false);
-            navigate('/admin/manage-menu');
+            navigate('/admin/manage-menu/category');
           }}
         >
           Manage Menu
@@ -116,15 +121,20 @@ export default function AdminLayout() {
 
     async function loadAdminTheme() {
       try {
+        await ensureDefaultMenuTheme(user.id);
+        if (cancelled) return;
+
         const { data, error } = await supabase
           .from('menu_theme')
           .select('admin_side_color, button_color')
           .eq('user_id', user.id)
           .maybeSingle();
         if (cancelled || error) return;
-        applyAdminHeaderTheme(data?.admin_side_color || data?.button_color || null);
+        applyAdminHeaderTheme(
+          resolveThemeColor(data?.admin_side_color, data?.button_color, DEFAULT_PRIMARY_COLOR),
+        );
       } catch {
-        if (!cancelled) applyAdminHeaderTheme(null);
+        if (!cancelled) applyAdminHeaderTheme(DEFAULT_PRIMARY_COLOR);
       }
     }
 
@@ -138,7 +148,7 @@ export default function AdminLayout() {
   useEffect(() => {
     if (window.location.hash === '#manage-menu') {
       window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
-      navigate('/admin/manage-menu', { replace: true });
+      navigate('/admin/manage-menu/category', { replace: true });
     }
   }, [navigate]);
 
@@ -164,6 +174,8 @@ export default function AdminLayout() {
     if (!sidebar || !container) return undefined;
 
     if (isManageMenu) {
+      // Restore classes React may not re-apply after imperative classList edits on other routes
+      sidebar.classList.add('collapsed');
       container.classList.add('full-width');
       return undefined;
     }
@@ -309,7 +321,11 @@ export default function AdminLayout() {
                   title="Orders"
                   onClick={handleOrdersTabClick}
                 >
-                  <span className="sidebar-icon">📋</span>
+                  <span className="sidebar-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                      <path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1s-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zM7 8h10v2H7V8zm0 4h10v2H7v-2zm0 4h7v2H7v-2z" />
+                    </svg>
+                  </span>
                   <span className="sidebar-text">Orders</span>
                 </button>
               </li>
@@ -321,7 +337,11 @@ export default function AdminLayout() {
                   title="Dashboard"
                   onClick={handleDashboardTabClick}
                 >
-                  <span className="sidebar-icon">📈</span>
+                  <span className="sidebar-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                      <path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" />
+                    </svg>
+                  </span>
                   <span className="sidebar-text">Dashboard</span>
                 </button>
               </li>
@@ -329,7 +349,10 @@ export default function AdminLayout() {
           </nav>
         </aside>
 
-        <div className="container full-width" ref={containerRef}>
+        <div
+          className={`container full-width${isManageMenu ? ' manage-menu-active' : ''}`}
+          ref={containerRef}
+        >
           <Outlet />
         </div>
       </div>

@@ -36,7 +36,7 @@
     </nav>
   </aside>
 
-  <div class="container">
+  <div class="container full-width">
 
   <div class="card" id="categoryCard">
     <h2>Category Operations</h2>
@@ -70,8 +70,10 @@
       <input id="price" placeholder="Price (₹)" required />
       <input id="image" placeholder="Image URL" required />
     </div>
-    <input id="description" placeholder="Dish description" />
-    <button id="saveBtn">Save Dish</button>
+    <div class="dish-input-row">
+      <input id="description" placeholder="Dish description" />
+      <button id="saveBtn">Save Dish</button>
+    </div>
   </div>
 
   <div class="card" id="offersCard" style="display:none">
@@ -167,7 +169,7 @@
     </div>
   </div>
 
-  <div class="card" id="menuItemsCard">
+  <div class="card" id="menuItemsCard" style="display:none">
     <div class="menu-items-header">
       <h2>Menu Items</h2>
       <input id="searchInput" placeholder="Search dish by name..." class="compact-search" />

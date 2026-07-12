@@ -225,8 +225,7 @@ export default function MyOrdersPage() {
             <div className="error-state">{error}</div>
           ) : orders.length === 0 ? (
             <div className="empty-state">
-              No orders yet for this restaurant. Your orders here will appear after you place them from
-              this menu.
+              No orders.
             </div>
           ) : (
             orders.map((order) => (

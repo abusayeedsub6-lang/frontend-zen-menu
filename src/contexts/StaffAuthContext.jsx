@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { clearStaffSession, getStaffSession, staffLogin } from '../services/staffAuth';
 import { applyStaffTheme, clearStaffTheme } from '../utils/staffTheme';
+import { DEFAULT_PRIMARY_COLOR, resolveThemeColor } from '../utils/menuThemeDefaults';
 
 const StaffAuthContext = createContext(null);
 
@@ -23,12 +24,9 @@ export function StaffAuthProvider({ children }) {
 
       if (error) throw error;
 
-      const colorToUse = data?.staff_side_color || data?.button_color || null;
-      if (colorToUse) {
-        applyStaffTheme(colorToUse);
-      } else {
-        clearStaffTheme();
-      }
+      applyStaffTheme(
+        resolveThemeColor(data?.staff_side_color, data?.button_color, DEFAULT_PRIMARY_COLOR),
+      );
     } catch {
       clearStaffTheme();
     }

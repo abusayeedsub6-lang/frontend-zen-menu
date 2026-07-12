@@ -5,6 +5,7 @@ import FloatingKartButton from '../../components/user/FloatingKartButton';
 import MenuFilters from '../../components/user/MenuFilters';
 import MenuGrid from '../../components/user/MenuGrid';
 import MenuHeader from '../../components/user/MenuHeader';
+import { OrderSuccessModal } from '../../components/user/OrderModals';
 import { CartProvider, useCart } from '../../hooks/useCart';
 import { useRestaurantContext } from '../../hooks/useRestaurantContext';
 import { useRestaurantTheme } from '../../hooks/useRestaurantTheme';
@@ -28,6 +29,7 @@ function MenuPageContent() {
   const [categoryFilter, setCategoryFilter] = useState(null);
   const [showOrdersButton, setShowOrdersButton] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [showOrderSuccess, setShowOrderSuccess] = useState(false);
   const [loading, setLoading] = useState(true);
   const [emptyRestaurant, setEmptyRestaurant] = useState(false);
 
@@ -144,7 +146,10 @@ function MenuPageContent() {
     setIsCartOpen(false);
     try {
       await placeOrder(tableNumber);
-      navigate(ordersPath);
+      setShowOrderSuccess(true);
+      window.setTimeout(() => {
+        navigate(ordersPath);
+      }, 1500);
     } catch (error) {
       console.error('Error placing order from cart:', error);
       alert(error.message || 'Error placing order. Please try again.');
@@ -257,6 +262,8 @@ function MenuPageContent() {
         onChangeQty={changeQty}
         onPlaceOrder={handlePlaceOrder}
       />
+
+      <OrderSuccessModal isOpen={showOrderSuccess} />
 
       <FloatingKartButton itemCount={itemCount} onClick={() => setIsCartOpen(true)} />
     </div>
