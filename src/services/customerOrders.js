@@ -79,7 +79,8 @@ export async function fetchOrdersFromSupabase() {
         dish_id,
         dish_name,
         price,
-        quantity
+        quantity,
+        created_at
       )
     `)
     .in('id', orderIds)
@@ -95,7 +96,7 @@ export async function fetchOrdersFromSupabase() {
     if (ids.length > 0) {
       const { data: allItems, error: itemsError } = await supabase
         .from('order_items')
-        .select('id, dish_id, dish_name, price, quantity, order_id')
+        .select('id, dish_id, dish_name, price, quantity, order_id, created_at')
         .in('order_id', ids);
 
       if (!itemsError && allItems) {
@@ -226,7 +227,7 @@ export function isOrderCancellable(order) {
   return true;
 }
 
-export function canRemoveOrderItem(order) {
+export function canRemoveOrderItem(order, item = null) {
   if (!order || order.cancelled === true) return false;
 
   const isPaid =
@@ -236,18 +237,48 @@ export function canRemoveOrderItem(order) {
 
   if (isPaid) return false;
 
-  if (!order.created_at) return false;
+  // Use the item's own add time so freshly added items stay removable
+  // even if the parent order is older than 7 minutes.
+  const timestamp = item?.created_at || order.created_at;
+  if (!timestamp) return false;
 
-  const orderDate = new Date(order.created_at);
-  if (Number.isNaN(orderDate.getTime())) return false;
+  const addedAt = new Date(timestamp);
+  if (Number.isNaN(addedAt.getTime())) return false;
 
-  const diffInMinutes = (Date.now() - orderDate.getTime()) / (1000 * 60);
+  const diffInMinutes = (Date.now() - addedAt.getTime()) / (1000 * 60);
   return diffInMinutes <= 7;
 }
 
 export async function removeOrderItemFromDatabase(orderId, itemId) {
   if (!supabase) {
     throw new Error('Supabase library not loaded');
+  }
+
+  const { data: itemRow, error: itemFetchError } = await supabase
+    .from('order_items')
+    .select('id, created_at, order_id')
+    .eq('id', itemId)
+    .eq('order_id', orderId)
+    .maybeSingle();
+
+  if (itemFetchError) {
+    throw itemFetchError;
+  }
+  if (!itemRow) {
+    throw new Error('Order item not found');
+  }
+
+  const { data: orderRow, error: orderFetchError } = await supabase
+    .from('orders')
+    .select('id, payment_method, cancelled, created_at')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  if (orderFetchError) {
+    throw orderFetchError;
+  }
+  if (!orderRow || !canRemoveOrderItem(orderRow, itemRow)) {
+    throw new Error('This item can no longer be removed');
   }
 
   const { error: deleteError } = await supabase

@@ -103,24 +103,36 @@ async function mergeItemsIntoExistingOrder(
     console.warn('Could not update order total:', updateOrderError.message);
   }
 
+  // Prefer DB rows so newly added items have real ids + created_at for the 7-min remove window
+  let refreshedItems = null;
+  const { data: dbRefreshedItems, error: refreshError } = await supabase
+    .from('order_items')
+    .select('id, dish_id, dish_name, price, quantity, created_at')
+    .eq('order_id', orderId);
+
+  if (!refreshError && dbRefreshedItems) {
+    refreshedItems = dbRefreshedItems;
+  }
+
   let customerOrders = JSON.parse(localStorage.getItem('customerOrders') || '[]');
   const orderIndex = customerOrders.findIndex((o) => o.id === orderId);
+  const addedAt = new Date().toISOString();
+  const fallbackNewItems = newOrderItems.map((item, index) => ({
+    id: `${orderId}_item_${Date.now()}_${index}`,
+    dish_id: item.dish_id,
+    dish_name: item.dish_name,
+    price: item.price,
+    quantity: parseInt(item.quantity, 10) || 1,
+    created_at: addedAt,
+  }));
 
   if (orderIndex >= 0) {
     const existingOrderData = customerOrders[orderIndex];
     const existingLocalItems = existingOrderData.order_items || [];
-    const newLocalItems = newOrderItems.map((item, index) => ({
-      id: `${orderId}_item_${Date.now()}_${index}`,
-      dish_id: item.dish_id,
-      dish_name: item.dish_name,
-      price: item.price,
-      quantity: parseInt(item.quantity, 10) || 1,
-    }));
-
     customerOrders[orderIndex] = {
       ...existingOrderData,
       total_amount: updatedTotal.toFixed(2),
-      order_items: [...existingLocalItems, ...newLocalItems],
+      order_items: refreshedItems || [...existingLocalItems, ...fallbackNewItems],
       table_number: tableNumber || existingOrderData.table_number || null,
     };
   } else {
@@ -132,13 +144,16 @@ async function mergeItemsIntoExistingOrder(
       payment_method: existingOrder.payment_method || 'unpaid',
       created_at: existingOrder.created_at || new Date().toISOString(),
       table_number: tableNumber || null,
-      order_items: newOrderItems.map((item, index) => ({
-        id: `${orderId}_item_${index}`,
-        dish_id: item.dish_id,
-        dish_name: item.dish_name,
-        price: item.price,
-        quantity: parseInt(item.quantity, 10) || 1,
-      })),
+      order_items:
+        refreshedItems ||
+        newOrderItems.map((item, index) => ({
+          id: `${orderId}_item_${index}`,
+          dish_id: item.dish_id,
+          dish_name: item.dish_name,
+          price: item.price,
+          quantity: parseInt(item.quantity, 10) || 1,
+          created_at: addedAt,
+        })),
     });
   }
 
@@ -289,6 +304,7 @@ export async function placeOrderFromCart(cart, adminId, tableNumber) {
       dish_name: item.dish_name,
       price: item.price,
       quantity: parseInt(item.quantity, 10) || 1,
+      created_at: new Date().toISOString(),
     })),
   };
 

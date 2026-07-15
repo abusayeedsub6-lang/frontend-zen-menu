@@ -560,7 +560,7 @@ header p {
 }
 
 .menu-qty-btn {
-  background: #ff6b35;
+  background: var(--theme-button-bg, var(--theme-primary-color, #ff6b00));
   color: white;
   border: none;
   width: 27px;
@@ -578,7 +578,7 @@ header p {
 }
 
 .menu-qty-btn:hover {
-  background: #ff5722;
+  background: var(--theme-button-hover, var(--theme-primary-color-dark, #e55a00));
   transform: scale(1.05);
 }
 

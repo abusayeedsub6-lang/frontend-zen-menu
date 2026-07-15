@@ -13,7 +13,6 @@ export default function OrderCard({ order, sessionTableNumber, onCancel, onGetBi
   const cardClass = isCancelled ? 'order-card cancelled' : 'order-card';
   const orderIdClass = isCancelled ? 'order-id cancelled' : 'order-id';
   const canCancel = isOrderCancellable(order);
-  const canRemoveItems = canRemoveOrderItem(order);
 
   const isPaid =
     order.payment_method &&
@@ -82,6 +81,7 @@ export default function OrderCard({ order, sessionTableNumber, onCancel, onGetBi
           orderItems.map((item, index) => {
             const itemTotal = (parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 1);
             const itemPrice = parseFloat(item.price || 0).toFixed(2);
+            const canRemoveItem = canRemoveOrderItem(order, item);
             return (
               <div key={item.id || `${order.id}-${index}`} className="order-item">
                 <div className="order-item-serial">{index + 1}.</div>
@@ -92,7 +92,7 @@ export default function OrderCard({ order, sessionTableNumber, onCancel, onGetBi
                   </span>
                 </div>
                 <div className="order-item-price">{itemTotal.toFixed(2)}</div>
-                {canRemoveItems && item.id ? (
+                {canRemoveItem && item.id ? (
                   <button
                     type="button"
                     className="remove-item-btn"
