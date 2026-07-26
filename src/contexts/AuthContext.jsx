@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { applyAdminHeaderTheme, clearAdminHeaderTheme } from '../utils/adminTheme';
-import { ensureDefaultMenuTheme } from '../services/menu';
+import { ensureDefaultMenuTheme, fetchMenuTheme } from '../services/menu';
 import { DEFAULT_PRIMARY_COLOR, resolveThemeColor } from '../utils/menuThemeDefaults';
 import {
   adminOAuthRedirectUrl,
@@ -43,15 +43,10 @@ export function AuthProvider({ children }) {
   const completedSignInRef = useRef(false);
 
   const applyThemeForUser = useCallback(async (userId) => {
-    if (!userId || !supabase) return;
+    if (!userId) return;
     try {
       await ensureDefaultMenuTheme(userId);
-      const { data, error } = await supabase
-        .from('menu_theme')
-        .select('admin_side_color, button_color')
-        .eq('user_id', userId)
-        .maybeSingle();
-      if (error) throw error;
+      const data = await fetchMenuTheme(userId);
       applyAdminHeaderTheme(
         resolveThemeColor(data?.admin_side_color, data?.button_color, DEFAULT_PRIMARY_COLOR),
       );
@@ -64,8 +59,6 @@ export function AuthProvider({ children }) {
     async (nextSession, { withAdminTheme = window.location.pathname.startsWith('/admin') } = {}) => {
       if (!nextSession) return;
       setSession(nextSession);
-      window.currentUserId = nextSession.user.id;
-      window.supabaseClient = supabase;
       if (withAdminTheme) {
         await applyThemeForUser(nextSession.user.id);
       }
@@ -115,7 +108,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (!supabase) {
-      setAuthError('Supabase is not configured. Check zen-menu/.env');
+      setAuthError('Supabase is not configured. Check frontend-zen-menu/.env');
       setLoading(false);
       return undefined;
     }
@@ -184,7 +177,6 @@ export function AuthProvider({ children }) {
       if (event === 'SIGNED_OUT') {
         completedSignInRef.current = false;
         setSession(null);
-        window.currentUserId = null;
         clearAdminHeaderTheme();
       }
     });

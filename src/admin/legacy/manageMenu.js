@@ -1,6 +1,22 @@
 'use strict';
 
-import { supabase as sharedSupabase } from '../../lib/supabase.js';
+import { supabase } from '../../lib/supabase.js';
+import {
+  createAdminCategory,
+  createAdminDish,
+  createAdminStaffMember,
+  deleteAdminCategory,
+  deleteAdminDish,
+  deleteAdminStaffMember,
+  fetchAdminCategories,
+  fetchAdminDishes,
+  fetchAdminStaff,
+  fetchAdminTheme,
+  reorderAdminCategories,
+  saveAdminTheme,
+  updateAdminCategory,
+  updateAdminDish,
+} from '../../services/adminManage.js';
 
 // Manage Menu Module — adapted for React (see admin/ManageMenuPage.jsx)
 
@@ -10,15 +26,11 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
   let editingDishId = null;
   let editingCategoryId = null;
 
-  // Access supabaseClient and currentUserId from parent scope
-  // These are defined in admin.html
   function getSupabaseClient() {
-    return sharedSupabase || window.supabaseClient || null;
+    return supabase;
   }
 
   async function getCurrentUserId() {
-    if (window.currentUserId) return window.currentUserId;
-    
     const supabaseClient = getSupabaseClient();
     if (!supabaseClient) {
       console.error('Supabase client not initialized');
@@ -31,8 +43,7 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
         console.error('Error getting session:', error);
         return null;
       }
-      window.currentUserId = session.user.id;
-      return window.currentUserId;
+      return session.user.id;
     } catch (error) {
       console.error('Error getting user ID:', error);
       return null;
@@ -43,30 +54,8 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
 
   // Load categories from Supabase (filtered by user_id)
   async function loadCategories() {
-    const supabaseClient = getSupabaseClient();
-    if (!supabaseClient) {
-      console.error('Supabase client not initialized');
-      return [];
-    }
-    
-    const userId = await getCurrentUserId();
-    if (!userId) {
-      console.error('User ID not available');
-      return [];
-    }
-    
     try {
-      // Order by display_order first, then by created_at as fallback, then by name
-      const { data, error } = await supabaseClient
-        .from('categories')
-        .select('*')
-        .eq('user_id', userId)
-        .order('display_order', { ascending: true, nullsFirst: false })
-        .order('created_at', { ascending: true });
-      
-      if (error) throw error;
-      
-      categories = data || [];
+      categories = await fetchAdminCategories();
       updateCategoryDropdown();
       if (document.getElementById('categoryTableBody')) {
         renderCategories();
@@ -81,58 +70,8 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
 
   // Load dishes from Supabase with category names (filtered by user_id)
   async function loadDishes() {
-    const supabaseClient = getSupabaseClient();
-    if (!supabaseClient) {
-      console.error('Supabase client not initialized');
-      return [];
-    }
-    
-    const userId = await getCurrentUserId();
-    if (!userId) {
-      console.error('User ID not available');
-      return [];
-    }
-    
     try {
-      const { data, error } = await supabaseClient
-        .from('dishes')
-        .select(`
-          *,
-          categories:category_id (
-            id,
-            name,
-            display_order
-          )
-        `)
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      
-      // Transform data to include category name and map dish_name to name for compatibility
-      menu = (data || []).map(dish => ({
-        ...dish,
-        name: dish.dish_name, // Map dish_name to name for UI compatibility
-        category: dish.categories?.name || '',
-        category_id: dish.category_id,
-        category_display_order: dish.categories?.display_order ?? 999999 // Use high value for null display_order
-      }));
-      
-      // Sort dishes consistently in descending order: newest first
-      // First by creation time (descending), then by category display_order as secondary sort
-      menu.sort((a, b) => {
-        // Primary sort: creation time descending (newest first)
-        const createdA = new Date(a.created_at || 0).getTime();
-        const createdB = new Date(b.created_at || 0).getTime();
-        if (createdA !== createdB) {
-          return createdB - createdA; // Descending order
-        }
-        // Secondary sort: category display_order (if same creation time)
-        const orderA = a.category_display_order ?? 999999;
-        const orderB = b.category_display_order ?? 999999;
-        return orderA - orderB;
-      });
-      
+      menu = await fetchAdminDishes();
       const searchInput = document.getElementById('searchInput');
       if (searchInput) {
         renderMenu(searchInput.value.trim());
@@ -154,181 +93,47 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
   }
 
   async function addCategory(name) {
-    const supabaseClient = getSupabaseClient();
-    if (!supabaseClient) {
-      alert('Supabase client not initialized');
-      return;
-    }
-    
-    const userId = await getCurrentUserId();
-    if (!userId) {
-      alert('User ID not available. Please log in again.');
-      window.location.href = '/';
-      return;
-    }
-    
     try {
-      // Verify session is active
-      const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
-      if (sessionError || !session) {
-        alert('Session expired. Please log in again.');
-        window.location.href = '/';
-        return;
-      }
-      
-      // Get the maximum display_order for this user to assign the next order
-      const { data: existingCategories, error: maxError } = await supabaseClient
-        .from('categories')
-        .select('display_order')
-        .eq('user_id', userId)
-        .order('display_order', { ascending: false, nullsLast: true })
-        .limit(1);
-      
-      let nextDisplayOrder = 1;
-      if (!maxError && existingCategories && existingCategories.length > 0) {
-        const maxOrder = existingCategories[0].display_order;
-        if (maxOrder !== null && maxOrder !== undefined) {
-          nextDisplayOrder = maxOrder + 1;
-        }
-      }
-      
-      // Note: id (UUID) and created_at are auto-generated by Supabase
-      const { data, error } = await supabaseClient
-        .from('categories')
-        .insert([{ 
-          name: name.trim(), 
-          user_id: userId,
-          display_order: nextDisplayOrder
-        }])
-        .select()
-        .single();
-      
-      if (error) throw error;
-      
+      const data = await createAdminCategory(name);
       await loadCategories();
       return data;
     } catch (error) {
       console.error('Error adding category:', error);
-      if (error.code === '42501') {
-        alert('Permission denied: Row-level security policy violation. Please check your Supabase RLS policies for the categories table.');
-      } else {
-        alert('Failed to add category: ' + error.message);
-      }
+      alert('Failed to add category: ' + error.message);
       throw error;
     }
   }
 
   async function updateCategoryInDB(id, oldName, newName) {
-    const supabaseClient = getSupabaseClient();
-    if (!supabaseClient) {
-      alert('Supabase client not initialized');
-      return;
-    }
-    
-    const userId = await getCurrentUserId();
-    if (!userId) {
-      alert('User ID not available. Please log in again.');
-      window.location.href = '/';
-      return;
-    }
-    
     try {
-      // Verify session is active
-      const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
-      if (sessionError || !session) {
-        alert('Session expired. Please log in again.');
-        window.location.href = '/';
-        return;
-      }
-      
-      // Ensure the category belongs to the current user
-      const { data, error } = await supabaseClient
-        .from('categories')
-        .update({ name: newName.trim() })
-        .eq('id', id)
-        .eq('user_id', userId)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      
-      // No need to update dishes - they use category_id foreign key which stays the same
+      const data = await updateAdminCategory(id, newName);
       await loadCategories();
       await loadDishes();
       return data;
     } catch (error) {
       console.error('Error updating category:', error);
-      if (error.code === '42501') {
-        alert('Permission denied: Row-level security policy violation. Please check your Supabase RLS policies for the categories table.');
-      } else {
-        alert('Failed to update category: ' + error.message);
-      }
+      alert('Failed to update category: ' + error.message);
       throw error;
     }
   }
 
   async function deleteCategoryFromDB(id, name) {
-    const supabaseClient = getSupabaseClient();
-    if (!supabaseClient) {
-      alert('Supabase client not initialized');
-      return;
-    }
-    
-    const userId = await getCurrentUserId();
-    if (!userId) {
-      alert('User ID not available. Please log in again.');
-      window.location.href = '/';
-      return;
-    }
-    
     try {
-      // Verify session is active
-      const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
-      if (sessionError || !session) {
-        alert('Session expired. Please log in again.');
-        window.location.href = '/';
-        return;
-      }
-      
-      // Check if any dishes use this category (id is UUID) - only for current user
-      const { data: dishesUsingCategory, error: checkError } = await supabaseClient
-        .from('dishes')
-        .select('id')
-        .eq('category_id', id)
-        .eq('user_id', userId); // UUID comparison
-      
-      if (checkError) throw checkError;
-      
-      if (dishesUsingCategory && dishesUsingCategory.length > 0) {
-        if (!confirm(`This category is used by ${dishesUsingCategory.length} dish(es). Remove anyway?`)) {
-          return;
+      try {
+        await deleteAdminCategory(id, { force: false });
+      } catch (error) {
+        if (error.code === 'CATEGORY_IN_USE') {
+          if (!confirm(error.message + ' Remove anyway?')) return;
+          await deleteAdminCategory(id, { force: true });
+        } else {
+          throw error;
         }
-        // Delete dishes that use this category (only user's dishes)
-        await supabaseClient
-          .from('dishes')
-          .delete()
-          .eq('category_id', id)
-          .eq('user_id', userId); // UUID comparison
       }
-      
-      // Delete category (id is UUID) - only if it belongs to current user
-      const { error } = await supabaseClient
-        .from('categories')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', userId); // UUID comparison
-      
-      if (error) throw error;
-      
       await loadCategories();
       await loadDishes();
     } catch (error) {
       console.error('Error deleting category:', error);
-      if (error.code === '42501') {
-        alert('Permission denied: Row-level security policy violation. Please check your Supabase RLS policies for the categories table.');
-      } else {
-        alert('Failed to delete category: ' + error.message);
-      }
+      alert('Failed to delete category: ' + error.message);
       throw error;
     }
   }
@@ -621,20 +426,10 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
     async function loadThemeIntoForm() {
       const userId = await getCurrentUserId();
       if (!userId) return;
-      const supabaseClient = getSupabaseClient();
-      if (!supabaseClient) return;
       try {
-          // Load theme colors - restaurant-specific (filtered by user_id)
-          // Each restaurant admin can only see and modify their own theme colors
-        const { data, error } = await supabaseClient
-          .from('menu_theme')
-            .select('menu_name, menu_description, user_side_color, staff_side_color, admin_side_color, button_color')
-          .eq('user_id', userId)
-          .maybeSingle();
-        if (error) throw error;
+        const data = await fetchAdminTheme();
         const name = (data && data.menu_name != null) ? String(data.menu_name) : 'ZEN MENU';
         const desc = (data && data.menu_description != null) ? String(data.menu_description) : 'Menu Without Menu Books';
-        // For backward compatibility, use button_color if new fields don't exist
         const defaultColor = (data && data.button_color) ? String(data.button_color).trim() : '#ff6b00';
         const userColor = (data && data.user_side_color) ? String(data.user_side_color).trim() : defaultColor;
         const staffColor = (data && data.staff_side_color) ? String(data.staff_side_color).trim() : defaultColor;
@@ -755,14 +550,15 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
       themeResetBtn.addEventListener('click', async () => {
         const userId = await getCurrentUserId();
         if (!userId) { alert('Not logged in'); return; }
-        const supabaseClient = getSupabaseClient();
-        if (!supabaseClient) { alert('Database not available'); return; }
         setThemeFormToDefaults();
         try {
-          const { error } = await supabaseClient
-            .from('menu_theme')
-            .upsert({ user_id: userId, menu_name: DEFAULT_MENU_NAME, menu_description: DEFAULT_MENU_DESC, user_side_color: DEFAULT_PRIMARY_COLOR, staff_side_color: DEFAULT_PRIMARY_COLOR, admin_side_color: DEFAULT_PRIMARY_COLOR }, { onConflict: 'user_id' });
-          if (error) throw error;
+          await saveAdminTheme({
+            menu_name: DEFAULT_MENU_NAME,
+            menu_description: DEFAULT_MENU_DESC,
+            user_side_color: DEFAULT_PRIMARY_COLOR,
+            staff_side_color: DEFAULT_PRIMARY_COLOR,
+            admin_side_color: DEFAULT_PRIMARY_COLOR,
+          });
           if (themeSaveBtn) {
             themeSaveBtn.classList.add('saved');
             themeSaveBtn.textContent = 'Saved!';
@@ -773,7 +569,7 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
           }
         } catch (e) {
           console.error('Theme reset save failed:', e);
-          alert('Failed to save theme. Please run the SQL migration file: add_theme_color_columns.sql in your Supabase SQL Editor to add the required columns (user_side_color, staff_side_color, admin_side_color) to the menu_theme table.');
+          alert('Failed to save theme: ' + (e.message || 'Unknown error'));
         }
       });
     }
@@ -782,8 +578,6 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
       themeSaveBtn.addEventListener('click', async () => {
         const userId = await getCurrentUserId();
         if (!userId) { alert('Not logged in'); return; }
-        const supabaseClient = getSupabaseClient();
-        if (!supabaseClient) { alert('Database not available'); return; }
         const name = (themeMenuName && themeMenuName.value) ? themeMenuName.value.trim() : 'ZEN MENU';
         const desc = (themeMenuDescription && themeMenuDescription.value) ? themeMenuDescription.value.trim() : 'Menu Without Menu Books';
         let userColor = (themeUserSideColorHex && themeUserSideColorHex.value) ? themeUserSideColorHex.value.trim() : (themeUserSideColor ? themeUserSideColor.value : DEFAULT_PRIMARY_COLOR);
@@ -793,13 +587,13 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
         let adminColor = (themeAdminSideColorHex && themeAdminSideColorHex.value) ? themeAdminSideColorHex.value.trim() : (themeAdminSideColor ? themeAdminSideColor.value : DEFAULT_PRIMARY_COLOR);
         if (!/^#[0-9A-Fa-f]{6}$/.test(adminColor)) adminColor = DEFAULT_PRIMARY_COLOR;
         try {
-          // Save theme colors - restaurant-specific (scoped by user_id)
-          // Each restaurant admin can only modify their own theme colors
-          // The onConflict: 'user_id' ensures updates only affect the current restaurant's row
-          const { error } = await supabaseClient
-            .from('menu_theme')
-            .upsert({ user_id: userId, menu_name: name, menu_description: desc, user_side_color: userColor, staff_side_color: staffColor, admin_side_color: adminColor }, { onConflict: 'user_id' });
-          if (error) throw error;
+          await saveAdminTheme({
+            menu_name: name,
+            menu_description: desc,
+            user_side_color: userColor,
+            staff_side_color: staffColor,
+            admin_side_color: adminColor,
+          });
           themeSaveBtn.classList.add('saved');
           themeSaveBtn.textContent = 'Saved!';
           setTimeout(() => {
@@ -808,7 +602,7 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
           }, 2000);
         } catch (e) {
           console.error('Theme save failed:', e);
-          alert('Failed to save theme. Please run the SQL migration file: add_theme_color_columns.sql in your Supabase SQL Editor to add the required columns (user_side_color, staff_side_color, admin_side_color) to the menu_theme table.');
+          alert('Failed to save theme: ' + (e.message || 'Unknown error'));
         }
       });
     }
@@ -973,41 +767,13 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
 
   // Update display_order values in database after reordering
   async function updateCategoryOrders() {
-    const supabaseClient = getSupabaseClient();
-    if (!supabaseClient) {
-      console.error('Supabase client not initialized');
-      return;
-    }
-    
-    const userId = await getCurrentUserId();
-    if (!userId) {
-      console.error('User ID not available');
-      return;
-    }
-    
     try {
-      // Update each category with its new display_order
-      for (let i = 0; i < categories.length; i++) {
-        const { error } = await supabaseClient
-          .from('categories')
-          .update({ display_order: i + 1 })
-          .eq('id', categories[i].id)
-          .eq('user_id', userId);
-        
-        if (error) {
-          console.error(`Error updating category ${categories[i].id}:`, error);
-          // Reload categories on error to restore correct order
-          await loadCategories();
-          return;
-        }
-      }
-      
-      // Reload to ensure UI is in sync
+      const orderedIds = categories.map((c) => c.id);
+      categories = await reorderAdminCategories(orderedIds);
       await loadCategories();
     } catch (error) {
       console.error('Error updating category orders:', error);
       alert('Failed to save category order: ' + error.message);
-      // Reload categories on error to restore correct order
       await loadCategories();
     }
   }
@@ -1099,136 +865,70 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
     const descriptionInput = document.getElementById('description');
     const categoryInput = document.getElementById('category');
 
-    // Remove previous error states
-    [nameInput, priceInput, imageInput, categoryInput].forEach(field => {
+    [nameInput, priceInput, imageInput, categoryInput].forEach((field) => {
       if (field) field.classList.remove('error');
     });
 
-    // Validate required fields
     let hasError = false;
-    
     if (!nameInput?.value || !nameInput.value.trim()) {
       if (nameInput) nameInput.classList.add('error');
       hasError = true;
     }
-    
     if (!priceInput?.value || !priceInput.value.trim()) {
       if (priceInput) priceInput.classList.add('error');
       hasError = true;
     }
-    
     if (!imageInput?.value || !imageInput.value.trim()) {
       if (imageInput) imageInput.classList.add('error');
       hasError = true;
     }
-    
+
     const catList = await getCategories();
     if (catList.length === 0) {
       alert('Please add at least one category before adding dishes');
       return;
     }
-    
     if (!categoryInput?.value) {
       if (categoryInput) categoryInput.classList.add('error');
       hasError = true;
     }
-
-    // If there are errors, stop here
-    if (hasError) {
-      return;
-    }
+    if (hasError) return;
 
     const dishName = nameInput.value.trim();
-    const dishPrice = parseInt(priceInput.value.trim());
-    const categoryId = categoryInput.value; // UUID, no need to parse
-    
+    const dishPrice = parseInt(priceInput.value.trim(), 10);
+    const categoryId = categoryInput.value;
+
     if (isNaN(dishPrice) || dishPrice <= 0) {
       if (priceInput) priceInput.classList.add('error');
       alert('Please enter a valid price');
       return;
     }
-
     if (!categoryId) {
       if (categoryInput) categoryInput.classList.add('error');
       alert('Please select a valid category');
       return;
     }
 
-    const userId = await getCurrentUserId();
-    if (!userId) {
-      alert('User ID not available. Please log in again.');
-      window.location.href = '/';
-      return;
-    }
-
-    // Note: id (UUID) and created_at are auto-generated by Supabase
     const dishData = {
-      dish_name: dishName, // Use dish_name as per table schema
+      dish_name: dishName,
       price: dishPrice,
       image_url: imageInput.value.trim(),
       description: descriptionInput?.value.trim() || null,
       category_id: categoryId,
-      user_id: userId
     };
 
-    const supabaseClient = getSupabaseClient();
-    if (!supabaseClient) {
-      alert('Supabase client not initialized');
-      return;
-    }
-    
     try {
-      // Verify session is active
-      const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
-      if (sessionError || !session) {
-        alert('Session expired. Please log in again.');
-        window.location.href = '/';
-        return;
-      }
-      
       if (editingDishId) {
-        // Update existing dish - ensure it belongs to current user
-        const { error } = await supabaseClient
-          .from('dishes')
-          .update(dishData)
-          .eq('id', editingDishId)
-          .eq('user_id', userId);
-        
-        if (error) throw error;
+        await updateAdminDish(editingDishId, dishData);
         editingDishId = null;
       } else {
-        // Check if dish already exists for this user
-        const { data: existing, error: checkError } = await supabaseClient
-          .from('dishes')
-          .select('id')
-          .eq('dish_name', dishName)
-          .eq('user_id', userId);
-        
-        if (checkError) {
-          console.error('Error checking for existing dish:', checkError);
-          // Continue with insert attempt even if check fails
-        } else if (existing && existing.length > 0) {
-          alert('This dish already exists');
-          return;
-        }
-        
-        // Insert new dish
-        const { error } = await supabaseClient
-          .from('dishes')
-          .insert([dishData]);
-        
-        if (error) throw error;
+        await createAdminDish(dishData);
       }
-      
       await loadDishes();
       clearForm();
     } catch (error) {
       console.error('Error saving dish:', error);
-      if (error.code === '42501') {
-        alert('Permission denied: Row-level security policy violation. Please check your Supabase RLS policies for the dishes table.');
-      } else {
-        alert('Failed to save dish: ' + error.message);
-      }
+      alert('Failed to save dish: ' + error.message);
     }
   }
 
@@ -1255,46 +955,12 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
 
   async function deleteDish(id) {
     if (!confirm('Are you sure you want to delete this dish?')) return;
-    
-    const supabaseClient = getSupabaseClient();
-    if (!supabaseClient) {
-      alert('Supabase client not initialized');
-      return;
-    }
-    
-    const userId = await getCurrentUserId();
-    if (!userId) {
-      alert('User ID not available. Please log in again.');
-      window.location.href = '/';
-      return;
-    }
-    
     try {
-      // Verify session is active
-      const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
-      if (sessionError || !session) {
-        alert('Session expired. Please log in again.');
-        window.location.href = '/';
-        return;
-      }
-      
-      // Delete dish - only if it belongs to current user
-      const { error } = await supabaseClient
-        .from('dishes')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', userId);
-      
-      if (error) throw error;
-      
+      await deleteAdminDish(id);
       await loadDishes();
     } catch (error) {
       console.error('Error deleting dish:', error);
-      if (error.code === '42501') {
-        alert('Permission denied: Row-level security policy violation. Please check your Supabase RLS policies for the dishes table.');
-      } else {
-        alert('Failed to delete dish: ' + error.message);
-      }
+      alert('Failed to delete dish: ' + error.message);
     }
   }
 
@@ -1535,27 +1201,8 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
 
   // Load staff from Supabase
   async function loadStaff() {
-    const supabaseClient = getSupabaseClient();
-    if (!supabaseClient) {
-      console.error('Supabase client not initialized');
-      return [];
-    }
-    
-    const userId = await getCurrentUserId();
-    if (!userId) {
-      console.error('User ID not available');
-      return [];
-    }
-    
     try {
-      const { data, error } = await supabaseClient
-        .from('staff')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      
+      const data = await fetchAdminStaff();
       renderStaff(data || []);
       return data || [];
     } catch (error) {
@@ -1643,84 +1290,36 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
 
   // Create new staff
   async function createStaff(staffName, pin, phone = null) {
-    const supabaseClient = getSupabaseClient();
-    if (!supabaseClient) {
-      alert('Supabase client not initialized');
-      return;
-    }
-    
-    const userId = await getCurrentUserId();
-    if (!userId) {
-      alert('User ID not available. Please log in again.');
-      window.location.href = '/';
-      return;
-    }
-    
-    // Validate inputs
     if (!staffName || !staffName.trim()) {
       alert('Please enter staff name');
       return;
     }
-    
     if (!pin || !/^\d{4}$/.test(pin)) {
       alert('PIN must be exactly 4 digits');
       return;
     }
-    
+
     try {
-      // Check if staff name already exists for this restaurant
-      const { data: existing } = await supabaseClient
-        .from('staff')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('staff_name', staffName.trim())
-        .maybeSingle();
-      
-      if (existing) {
-        alert('Staff name already exists for this restaurant');
-        return;
-      }
-      
-      // Hash PIN (simple hash for now - in production use proper bcrypt)
-      // For now, storing as plain text (NOT SECURE - replace with proper hashing)
-      const hashedPin = pin; // TODO: Replace with proper hashing
-      
-      // Create staff record
-      const { data, error } = await supabaseClient
-        .from('staff')
-        .insert({
-          user_id: userId,
-          staff_name: staffName.trim(),
-          staff_pin: hashedPin,
-          phone: phone ? phone.trim() : null
-        })
-        .select()
-        .single();
-      
-      if (error) throw error;
-      
-      // Show credentials modal
+      const data = await createAdminStaffMember({
+        staffName,
+        pin,
+        phone,
+      });
+
       showStaffCredentialsModal(staffName, pin);
-      
-      // Clear form
+
       const staffNameInput = document.getElementById('staffNameInput');
       const staffPinInput = document.getElementById('staffPinInput');
       const staffPhoneInput = document.getElementById('staffPhoneInput');
       if (staffNameInput) staffNameInput.value = '';
       if (staffPinInput) staffPinInput.value = '';
       if (staffPhoneInput) staffPhoneInput.value = '';
-      
-      // Reload staff list
+
       await loadStaff();
-      
       return data;
     } catch (error) {
       console.error('Error creating staff:', error);
-      if (error.code === '42501') {
-        alert('Permission denied: Row-level security policy violation. Please check your Supabase RLS policies for the staff table.');
-      } else {
-        alert('Failed to create staff: ' + error.message);
-      }
+      alert('Failed to create staff: ' + error.message);
       throw error;
     }
   }
@@ -1730,52 +1329,13 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
     if (!confirm(`Are you sure you want to delete staff member "${staffName}"? This action cannot be undone.`)) {
       return;
     }
-    
-    const supabaseClient = getSupabaseClient();
-    if (!supabaseClient) {
-      alert('Supabase client not initialized');
-      return;
-    }
-    
-    const userId = await getCurrentUserId();
-    if (!userId) {
-      alert('User ID not available. Please log in again.');
-      window.location.href = '/';
-      return;
-    }
-    
+
     try {
-      // Verify staff belongs to this admin
-      const { data: staff } = await supabaseClient
-        .from('staff')
-        .select('user_id')
-        .eq('id', staffId)
-        .eq('user_id', userId)
-        .single();
-      
-      if (!staff) {
-        alert('Staff not found or unauthorized');
-        return;
-      }
-      
-      // Delete staff
-      const { error } = await supabaseClient
-        .from('staff')
-        .delete()
-        .eq('id', staffId)
-        .eq('user_id', userId);
-      
-      if (error) throw error;
-      
-      // Reload staff list
+      await deleteAdminStaffMember(staffId);
       await loadStaff();
     } catch (error) {
       console.error('Error deleting staff:', error);
-      if (error.code === '42501') {
-        alert('Permission denied: Row-level security policy violation. Please check your Supabase RLS policies for the staff table.');
-      } else {
-        alert('Failed to delete staff: ' + error.message);
-      }
+      alert('Failed to delete staff: ' + error.message);
       throw error;
     }
   }
@@ -2031,7 +1591,7 @@ export async function bootstrapManageMenu(initialTab = 'category') {
 }
 
 export function teardownManageMenu() {
-  const supabaseClient = sharedSupabase || window.supabaseClient || null;
+  const supabaseClient = supabase;
   if (categoriesChannel && supabaseClient) {
     supabaseClient.removeChannel(categoriesChannel);
   }

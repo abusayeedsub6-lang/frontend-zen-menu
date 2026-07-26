@@ -20,7 +20,7 @@ export const supabase =
         },
         global: {
           headers: {
-            'x-client-info': 'menu-mate',
+            'x-client-info': 'zen-menu',
           },
         },
       })

@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../lib/supabase';
 import { applyAdminHeaderTheme } from '../../utils/adminTheme';
-import { ensureDefaultMenuTheme } from '../../services/menu';
+import { ensureDefaultMenuTheme, fetchMenuTheme } from '../../services/menu';
 import {
   DEFAULT_PRIMARY_COLOR,
   resolveThemeColor,
@@ -108,14 +107,7 @@ export default function AdminLayout() {
   usePageTitle('Your Admin Panel');
 
   useEffect(() => {
-    window.supabaseClient = supabase;
-    if (user?.id) {
-      window.currentUserId = user.id;
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (!user?.id || !supabase) return undefined;
+    if (!user?.id) return undefined;
 
     let cancelled = false;
 
@@ -124,12 +116,8 @@ export default function AdminLayout() {
         await ensureDefaultMenuTheme(user.id);
         if (cancelled) return;
 
-        const { data, error } = await supabase
-          .from('menu_theme')
-          .select('admin_side_color, button_color')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        if (cancelled || error) return;
+        const data = await fetchMenuTheme(user.id);
+        if (cancelled || !data) return;
         applyAdminHeaderTheme(
           resolveThemeColor(data?.admin_side_color, data?.button_color, DEFAULT_PRIMARY_COLOR),
         );

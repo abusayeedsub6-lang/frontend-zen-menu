@@ -1,7 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
-import { clearStaffSession, getStaffSession, staffLogin } from '../services/staffAuth';
+import {
+  clearStaffSession,
+  getStaffSession,
+  staffLogin,
+  validateStaffSession,
+} from '../services/staffAuth';
+import { fetchMenuTheme } from '../services/menu';
 import { applyStaffTheme, clearStaffTheme } from '../utils/staffTheme';
 import { DEFAULT_PRIMARY_COLOR, resolveThemeColor } from '../utils/menuThemeDefaults';
 
@@ -13,17 +18,10 @@ export function StaffAuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   const applyThemeForRestaurant = useCallback(async (restaurantId) => {
-    if (!restaurantId || !supabase) return;
+    if (!restaurantId) return;
 
     try {
-      const { data, error } = await supabase
-        .from('menu_theme')
-        .select('staff_side_color, button_color')
-        .eq('user_id', restaurantId)
-        .maybeSingle();
-
-      if (error) throw error;
-
+      const data = await fetchMenuTheme(restaurantId);
       applyStaffTheme(
         resolveThemeColor(data?.staff_side_color, data?.button_color, DEFAULT_PRIMARY_COLOR),
       );
@@ -33,13 +31,25 @@ export function StaffAuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    const current = getStaffSession();
-    setSession(current);
-    if (current?.restaurantId) {
-      applyThemeForRestaurant(current.restaurantId).finally(() => setLoading(false));
-    } else {
-      setLoading(false);
+    let cancelled = false;
+
+    async function restore() {
+      const current = await validateStaffSession();
+      if (cancelled) return;
+
+      setSession(current);
+      if (current?.restaurantId) {
+        await applyThemeForRestaurant(current.restaurantId);
+      } else {
+        clearStaffTheme();
+      }
+      if (!cancelled) setLoading(false);
     }
+
+    restore();
+    return () => {
+      cancelled = true;
+    };
   }, [applyThemeForRestaurant]);
 
   const login = useCallback(
@@ -60,8 +70,8 @@ export function StaffAuthProvider({ children }) {
     [applyThemeForRestaurant, navigate],
   );
 
-  const logout = useCallback(() => {
-    clearStaffSession();
+  const logout = useCallback(async () => {
+    await clearStaffSession();
     setSession(null);
     clearStaffTheme();
     navigate('/staff', { replace: true });

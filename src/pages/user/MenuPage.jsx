@@ -54,8 +54,8 @@ function MenuPageContent() {
       return;
     }
 
-    const hasOrdersInDb = await hasRestaurantOrders(adminId);
-    setShowOrdersButton(hasOrdersInDb);
+    const hasOrdersOnServer = await hasRestaurantOrders(adminId);
+    setShowOrdersButton(hasOrdersOnServer);
   }, [adminId]);
 
   useEffect(() => {
