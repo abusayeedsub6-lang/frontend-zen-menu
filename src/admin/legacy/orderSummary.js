@@ -1,6 +1,7 @@
 'use strict';
 
 import { supabase } from '../../lib/supabase.js';
+import { getAdminSession } from '../../services/adminAuth.js';
 import {
   cancelAdminOrder,
   fetchAdminOrders,
@@ -20,21 +21,14 @@ import {
     return supabase;
   }
 
-  // Get current user ID
+  // Get current user ID from backend admin session
   async function getCurrentUserId() {
     if (currentUserId) return currentUserId;
-    
-    supabaseClient = getSupabaseClient();
-    if (!supabaseClient) return null;
 
-    try {
-      const { data: { session } } = await supabaseClient.auth.getSession();
-      if (session && session.user) {
-        currentUserId = session.user.id;
-        return currentUserId;
-      }
-    } catch (error) {
-      console.error('Error getting user ID:', error);
+    const session = getAdminSession();
+    if (session?.user?.id) {
+      currentUserId = session.user.id;
+      return currentUserId;
     }
     return null;
   }
@@ -63,7 +57,7 @@ import {
       'cash': 'Cash',
       'card': 'Card',
       'unpaid_new': 'New',
-      'unpaid_pay_at_counter': 'Pay at Counter'
+      'unpaid_pay_at_counter': 'Asking Bill'
     };
     return methodMap[method] || method;
   }
@@ -154,9 +148,9 @@ import {
       badgeClass = 'cancelled';
       badgeText = 'Cancelled';
     } else if (order.payment_method === 'unpaid_pay_at_counter') {
-      // Pay at Counter that hasn't been processed - show red badge
+      // Customer asked for bill but payment not processed yet - show red badge
       badgeClass = 'counter';
-      badgeText = 'Pay at Counter';
+      badgeText = 'Asking Bill';
     } else if (isPaid && order.payment_method) {
       // Order is paid (Cash, UPI, or Card) - show the payment method with green badge
       const paymentMethod = formatPaymentMethod(order.payment_method);

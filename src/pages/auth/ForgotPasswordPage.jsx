@@ -1,27 +1,39 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
+import { requestAdminPasswordReset } from '../../services/adminAuth';
 import { usePageTitle } from '../../hooks/usePageTitle';
 
-export default function LoginPage() {
-  const { authError, setAuthError, login } = useAuth();
+export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  usePageTitle('Sign in · Zen Menu Admin');
+  usePageTitle('Forgot password · Zen Menu Admin');
 
   async function handleSubmit(event) {
     event.preventDefault();
-    if (!email.trim() || !password) {
-      setAuthError('Enter your email and password.');
+
+    if (!email.trim() || !email.includes('@')) {
+      setError('Enter a valid email address.');
+      setInfo('');
       return;
     }
 
     setIsSubmitting(true);
-    setAuthError('');
+    setError('');
+    setInfo('');
+
     try {
-      await login(email.trim(), password);
+      const result = await requestAdminPasswordReset(email.trim());
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setInfo(
+        result.message ||
+          'If an account exists for that email, password reset instructions will be sent.',
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -30,13 +42,19 @@ export default function LoginPage() {
   return (
     <div className="auth-form-view">
       <h2 id="auth-form-title" className="auth-title">
-        Welcome back
+        Forgot password
       </h2>
-      <p className="auth-subtitle">Sign in to Zen Menu Admin</p>
+      <p className="auth-subtitle">Enter your email and we&apos;ll send reset instructions</p>
 
-      {authError ? (
+      {error ? (
         <div className="auth-message auth-message--error" role="alert">
-          {authError}
+          {error}
+        </div>
+      ) : null}
+
+      {info ? (
+        <div className="auth-message auth-message--success" role="status">
+          {info}
         </div>
       ) : null}
 
@@ -54,33 +72,15 @@ export default function LoginPage() {
           />
         </label>
 
-        <label className="auth-field">
-          <span className="auth-field-label-row">
-            <span>Password</span>
-            <Link to="/forgot-password" className="auth-forgot-link">
-              Forgot password?
-            </Link>
-          </span>
-          <input
-            type="password"
-            name="password"
-            autoComplete="current-password"
-            placeholder="Your password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </label>
-
         <button type="submit" className="auth-primary-btn" disabled={isSubmitting}>
-          {isSubmitting ? 'Signing in...' : 'Sign in'}
+          {isSubmitting ? 'Sending...' : 'Send reset link'}
         </button>
       </form>
 
       <p className="auth-footer">
-        New here?{' '}
-        <Link to="/signup" className="auth-switch-link">
-          Create an account
+        Remembered it?{' '}
+        <Link to="/" className="auth-switch-link">
+          Back to sign in
         </Link>
       </p>
     </div>

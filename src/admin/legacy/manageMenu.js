@@ -1,6 +1,7 @@
 'use strict';
 
 import { supabase } from '../../lib/supabase.js';
+import { getAdminSession } from '../../services/adminAuth.js';
 import {
   createAdminCategory,
   createAdminDish,
@@ -31,23 +32,8 @@ import {
   }
 
   async function getCurrentUserId() {
-    const supabaseClient = getSupabaseClient();
-    if (!supabaseClient) {
-      console.error('Supabase client not initialized');
-      return null;
-    }
-    
-    try {
-      const { data: { session }, error } = await supabaseClient.auth.getSession();
-      if (error || !session) {
-        console.error('Error getting session:', error);
-        return null;
-      }
-      return session.user.id;
-    } catch (error) {
-      console.error('Error getting user ID:', error);
-      return null;
-    }
+    const session = getAdminSession();
+    return session?.user?.id || null;
   }
 
   // ==================== SUPABASE DATA OPERATIONS ====================
@@ -824,10 +810,49 @@ import {
 
   // ==================== CATEGORY OPERATIONS ====================
 
+  function closeAllMenuActions() {
+    document.querySelectorAll('.menu-actions').forEach((menu) => {
+      menu.style.display = 'none';
+      menu.style.position = '';
+      menu.style.top = '';
+      menu.style.left = '';
+      menu.style.right = '';
+      menu.style.zIndex = '';
+    });
+  }
+
+  function positionMenuActions(menu, anchor) {
+    menu.style.display = 'block';
+    menu.style.position = 'fixed';
+    menu.style.right = 'auto';
+    menu.style.zIndex = '1000';
+
+    const anchorRect = anchor.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const gap = 4;
+    const margin = 8;
+
+    let top = anchorRect.bottom + gap;
+    if (top + menuRect.height > window.innerHeight - margin) {
+      top = Math.max(margin, anchorRect.top - menuRect.height - gap);
+    }
+
+    let left = anchorRect.right - menuRect.width;
+    if (left < margin) left = margin;
+    if (left + menuRect.width > window.innerWidth - margin) {
+      left = Math.max(margin, window.innerWidth - menuRect.width - margin);
+    }
+
+    menu.style.top = `${top}px`;
+    menu.style.left = `${left}px`;
+  }
+
   function toggleCategoryMenu(el) {
-    document.querySelectorAll('#categoryTable .menu-actions').forEach(m => m.style.display = 'none');
-    if (el.nextElementSibling) {
-      el.nextElementSibling.style.display = 'block';
+    const menu = el.nextElementSibling;
+    const wasOpen = menu && menu.style.display === 'block';
+    closeAllMenuActions();
+    if (!wasOpen && menu) {
+      positionMenuActions(menu, el);
     }
   }
 
@@ -992,19 +1017,24 @@ import {
   }
 
   function toggleMenu(el) {
-    document.querySelectorAll('.menu-actions').forEach(m => m.style.display = 'none');
-    if (el.nextElementSibling) {
-      el.nextElementSibling.style.display = 'block';
+    const menu = el.nextElementSibling;
+    const wasOpen = menu && menu.style.display === 'block';
+    closeAllMenuActions();
+    if (!wasOpen && menu) {
+      positionMenuActions(menu, el);
     }
   }
 
   // Close menu actions when clicking outside
   document.addEventListener('click', e => {
-    if (!e.target.classList.contains('dots')) {
-      document.querySelectorAll('.menu-actions').forEach(m => m.style.display = 'none');
-      document.querySelectorAll('#categoryTable .menu-actions').forEach(m => m.style.display = 'none');
+    if (!e.target.closest('.dots') && !e.target.closest('.menu-actions')) {
+      closeAllMenuActions();
     }
   });
+
+  // Keep fixed menus from floating after scroll/resize
+  document.addEventListener('scroll', closeAllMenuActions, true);
+  window.addEventListener('resize', closeAllMenuActions);
 
   // ==================== SIDEBAR POSITIONING ====================
 

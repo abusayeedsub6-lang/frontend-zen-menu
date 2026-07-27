@@ -216,7 +216,7 @@ import { startPolling } from '../../lib/polling.js';
       'cash': 'Cash',
       'card': 'Card',
       'unpaid_new': 'New',
-      'unpaid_pay_at_counter': 'Pay at Counter'
+      'unpaid_pay_at_counter': 'Asking Bill'
     };
     return methodMap[method] || method;
   }
@@ -267,7 +267,7 @@ import { startPolling } from '../../lib/polling.js';
       badgeText = 'Cancelled';
     } else if (order.payment_method === 'unpaid_pay_at_counter') {
       badgeClass = 'counter';
-      badgeText = 'Pay at Counter';
+      badgeText = 'Asking Bill';
     } else if (isPaid && order.payment_method) {
       const paymentMethod = formatPaymentMethod(order.payment_method);
       badgeClass = getPaymentBadgeClass(order.payment_method);

@@ -1,6 +1,5 @@
-import { supabase } from './supabase';
-
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace(/\/$/, '');
+const ADMIN_TOKEN_KEY = 'admin_token';
 
 export class ApiError extends Error {
   constructor(message, status, code = null) {
@@ -47,19 +46,14 @@ export async function apiRequest(path, options = {}) {
   return data;
 }
 
-export async function getAdminAccessToken() {
-  if (!supabase) throw new Error('Not authenticated');
-
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session?.access_token) throw new Error('Not authenticated');
-  return session.access_token;
+export function getAdminAccessToken() {
+  const token = localStorage.getItem(ADMIN_TOKEN_KEY);
+  if (!token) throw new Error('Not authenticated');
+  return token;
 }
 
 export async function adminApiRequest(path, options = {}) {
-  const token = await getAdminAccessToken();
+  const token = getAdminAccessToken();
   return apiRequest(path, { ...options, token });
 }
 

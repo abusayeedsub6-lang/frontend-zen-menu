@@ -6,8 +6,11 @@ import PageLoader from './components/PageLoader';
 import ProtectedStaffRoute from './components/staff/ProtectedStaffRoute';
 import { AuthProvider } from './contexts/AuthContext';
 import { StaffAuthProvider } from './contexts/StaffAuthContext';
+import AuthLayout from './pages/auth/AuthLayout';
+import LoginPage from './pages/auth/LoginPage';
+import SignupPage from './pages/auth/SignupPage';
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 
-const LoginPage = lazy(() => import('./pages/auth/LoginPage'));
 const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'));
 const OrderSummaryPage = lazy(() => import('./pages/admin/OrderSummaryPage'));
 const DashboardPage = lazy(() => import('./pages/admin/DashboardPage'));
@@ -27,7 +30,11 @@ export default function App() {
       <AuthProvider>
         <Suspense fallback={<PageLoader />}>
           <Routes>
-            <Route path="/" element={<LoginPage />} />
+            <Route element={<AuthLayout />}>
+              <Route path="/" element={<LoginPage />} />
+              <Route path="/signup" element={<SignupPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            </Route>
 
             <Route
               path="/admin"

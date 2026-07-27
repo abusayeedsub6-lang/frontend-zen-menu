@@ -16,7 +16,7 @@ function ProfileDropdown({ user, onSignOut }) {
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
 
-  const userEmail = user?.email || user?.user_metadata?.email || 'Admin';
+  const userEmail = user?.email || user?.name || 'Admin';
   const firstLetter = userEmail.charAt(0).toUpperCase();
   const menuUrl = `${window.location.origin}/menu?admin_id=${user?.id || ''}`;
   const staffLoginUrl = `${window.location.origin}/staff`;
