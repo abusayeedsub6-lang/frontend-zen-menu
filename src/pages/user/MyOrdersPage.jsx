@@ -5,12 +5,12 @@ import { CancelOrderModal, GetBillModal, RemoveItemModal } from '../../component
 import { useRestaurantContext } from '../../hooks/useRestaurantContext';
 import { useRestaurantTheme } from '../../hooks/useRestaurantTheme';
 import { usePageTitle } from '../../hooks/usePageTitle';
-import { supabase } from '../../lib/supabase';
+import { startPolling } from '../../lib/polling';
 import {
-  cancelOrderInDatabase,
-  fetchOrdersFromSupabase,
+  cancelCustomerOrder,
+  fetchCustomerOrders,
   mergeOrders,
-  removeOrderItemFromDatabase,
+  removeCustomerOrderItem,
   updateOrderPaymentMethod,
 } from '../../services/customerOrders';
 import '../../styles/user.css';
@@ -30,31 +30,33 @@ export default function MyOrdersPage() {
   const [isCancelling, setIsCancelling] = useState(false);
   const [isRemovingItem, setIsRemovingItem] = useState(false);
 
-  const loadOrders = useCallback(async () => {
+  const loadOrders = useCallback(async ({ silent = false } = {}) => {
     if (!adminId) {
       setOrders([]);
       setLoading(false);
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
 
     const localStorageOrders = JSON.parse(localStorage.getItem('customerOrders') || '[]');
 
     try {
       let allOrders = localStorageOrders;
 
-      const supabaseOrders = await fetchOrdersFromSupabase();
-      if (supabaseOrders) {
-        allOrders = mergeOrders(supabaseOrders, localStorageOrders);
+      const apiOrders = await fetchCustomerOrders();
+      if (apiOrders) {
+        allOrders = mergeOrders(apiOrders, localStorageOrders);
         localStorage.setItem('customerOrders', JSON.stringify(allOrders));
       }
 
       const ordersToRender = allOrders.filter((order) => order && order.user_id === adminId);
       setOrders(ordersToRender);
     } catch (loadError) {
-      console.error('Error syncing with Supabase:', loadError);
+      console.error('Error syncing orders:', loadError);
       const ordersToRender = localStorageOrders.filter(
         (order) => order && order.user_id === adminId,
       );
@@ -63,7 +65,7 @@ export default function MyOrdersPage() {
         setError('Error loading orders. Please refresh the page.');
       }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [adminId]);
 
@@ -71,48 +73,11 @@ export default function MyOrdersPage() {
     loadOrders();
   }, [loadOrders]);
 
+  // Phase 5: orders are not selectable by anon after RLS — poll the API instead of Realtime.
   useEffect(() => {
-    if (!supabase) return undefined;
-
-    const customerOrders = JSON.parse(localStorage.getItem('customerOrders') || '[]');
-    if (customerOrders.length === 0) return undefined;
-
-    const channel = supabase
-      .channel('customer_orders_channel')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'orders',
-        },
-        (payload) => {
-          const orderId = payload.new.id;
-          const storedOrders = JSON.parse(localStorage.getItem('customerOrders') || '[]');
-          const hasOrder = storedOrders.some((order) => order.id === orderId);
-          if (hasOrder) loadOrders();
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'orders',
-        },
-        (payload) => {
-          const orderId = payload.new.id;
-          const storedOrders = JSON.parse(localStorage.getItem('customerOrders') || '[]');
-          const hasOrder = storedOrders.some((order) => order.id === orderId);
-          if (hasOrder) loadOrders();
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [loadOrders]);
+    if (!adminId || orders.length === 0) return undefined;
+    return startPolling(() => loadOrders({ silent: true }), 8000);
+  }, [adminId, orders.length, loadOrders]);
 
   async function handleConfirmCancel() {
     if (!pendingCancelOrderId) return;
@@ -126,7 +91,7 @@ export default function MyOrdersPage() {
 
     setIsCancelling(true);
     try {
-      await cancelOrderInDatabase(pendingCancelOrderId);
+      await cancelCustomerOrder(pendingCancelOrderId);
 
       const customerOrders = JSON.parse(localStorage.getItem('customerOrders') || '[]');
       const updatedOrders = customerOrders.map((order) =>
@@ -175,7 +140,7 @@ export default function MyOrdersPage() {
     setIsRemovingItem(true);
 
     try {
-      const newTotal = await removeOrderItemFromDatabase(orderId, itemId);
+      const newTotal = await removeCustomerOrderItem(orderId, itemId);
 
       const customerOrders = JSON.parse(localStorage.getItem('customerOrders') || '[]');
       const updatedOrders = customerOrders.map((order) => {

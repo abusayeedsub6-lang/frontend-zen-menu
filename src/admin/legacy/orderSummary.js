@@ -1,6 +1,13 @@
 'use strict';
 
-import { supabase as sharedSupabase } from '../../lib/supabase.js';
+import { supabase } from '../../lib/supabase.js';
+import { getAdminSession } from '../../services/adminAuth.js';
+import {
+  cancelAdminOrder,
+  fetchAdminOrders,
+  removeAdminOrderItem,
+  updateAdminOrderPayment,
+} from '../../services/adminOrders.js';
 
 // Order Management Module — adapted for React (see admin/OrderSummaryPage.jsx)
 
@@ -10,32 +17,18 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
   let subscriptionHealthCheck = null;
   let isCleaningUp = false; // Flag to prevent reconnection loops
 
-  // Get Supabase client from global scope
   function getSupabaseClient() {
-    if (sharedSupabase) {
-      return sharedSupabase;
-    }
-    if (window.supabaseClient) {
-      return window.supabaseClient;
-    }
-    return null;
+    return supabase;
   }
 
-  // Get current user ID
+  // Get current user ID from backend admin session
   async function getCurrentUserId() {
     if (currentUserId) return currentUserId;
-    
-    supabaseClient = getSupabaseClient();
-    if (!supabaseClient) return null;
 
-    try {
-      const { data: { session } } = await supabaseClient.auth.getSession();
-      if (session && session.user) {
-        currentUserId = session.user.id;
-        return currentUserId;
-      }
-    } catch (error) {
-      console.error('Error getting user ID:', error);
+    const session = getAdminSession();
+    if (session?.user?.id) {
+      currentUserId = session.user.id;
+      return currentUserId;
     }
     return null;
   }
@@ -64,7 +57,7 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
       'cash': 'Cash',
       'card': 'Card',
       'unpaid_new': 'New',
-      'unpaid_pay_at_counter': 'Pay at Counter'
+      'unpaid_pay_at_counter': 'Asking Bill'
     };
     return methodMap[method] || method;
   }
@@ -155,9 +148,9 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
       badgeClass = 'cancelled';
       badgeText = 'Cancelled';
     } else if (order.payment_method === 'unpaid_pay_at_counter') {
-      // Pay at Counter that hasn't been processed - show red badge
+      // Customer asked for bill but payment not processed yet - show red badge
       badgeClass = 'counter';
-      badgeText = 'Pay at Counter';
+      badgeText = 'Asking Bill';
     } else if (isPaid && order.payment_method) {
       // Order is paid (Cash, UPI, or Card) - show the payment method with green badge
       const paymentMethod = formatPaymentMethod(order.payment_method);
@@ -284,124 +277,23 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
       return;
     }
 
-    supabaseClient = getSupabaseClient();
-    if (!supabaseClient) {
-      console.error('Supabase client not available');
-      return;
-    }
-
     try {
-      // Fetch orders with their items for this restaurant (filtered by user_id)
-      const selectWithTable = `
-        id,
-        order_number,
-        total_amount,
-        payment_method,
-        created_at,
-        user_id,
-        cancelled,
-        table_number,
-        order_items (
-          id,
-          dish_id,
-          dish_name,
-          price,
-          quantity
-        )
-      `;
-      const selectWithoutTable = `
-        id,
-        order_number,
-        total_amount,
-        payment_method,
-        created_at,
-        user_id,
-        cancelled,
-        order_items (
-          id,
-          dish_id,
-          dish_name,
-          price,
-          quantity
-        )
-      `;
-      let orders = null;
-      let error = null;
-      let res = await supabaseClient
-        .from('orders')
-        .select(selectWithTable)
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-      orders = res.data;
-      error = res.error;
-      // If column table_number doesn't exist yet, retry without it so page still loads
-      if (error && (String(error.message || '').includes('table_number') || String(error.message || '').includes('column'))) {
-        res = await supabaseClient
-          .from('orders')
-          .select(selectWithoutTable)
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false });
-        orders = res.data;
-        error = res.error;
-      }
-      if (error) throw error;
+      const orders = await fetchAdminOrders();
 
       if (!orders || orders.length === 0) {
         ordersGrid.innerHTML = '<p style="grid-column: 1 / -1; text-align: center; color: #6b7280; padding: 40px;">No orders yet. Orders will appear here when customers place them.</p>';
         return;
       }
 
-      // Fetch all order items for all orders; order by sort_order so items match customer (insertion order)
-      const orderIds = orders.map(o => o.id).filter(Boolean);
-      if (orderIds.length > 0) {
-        let allItems = null;
-        let itemsError = null;
-        const selectWithSort = 'id, dish_id, dish_name, price, quantity, order_id, sort_order';
-        const selectBase = 'id, dish_id, dish_name, price, quantity, order_id';
-        let res = await supabaseClient
-          .from('order_items')
-          .select(selectWithSort)
-          .in('order_id', orderIds)
-          .order('sort_order', { ascending: true });
-        allItems = res.data;
-        itemsError = res.error;
-        if (itemsError && (String(itemsError.message || '').includes('sort_order') || String(itemsError.message || '').includes('column'))) {
-          res = await supabaseClient
-            .from('order_items')
-            .select(selectBase)
-            .in('order_id', orderIds)
-            .order('id', { ascending: true });
-          allItems = res.data;
-          itemsError = res.error;
-        }
-        if (!itemsError && allItems) {
-          const itemsByOrderId = new Map();
-          allItems.forEach(item => {
-            if (!itemsByOrderId.has(item.order_id)) {
-              itemsByOrderId.set(item.order_id, []);
-            }
-            itemsByOrderId.get(item.order_id).push(item);
-          });
-          if (allItems.length > 0 && allItems[0].sort_order != null) {
-            itemsByOrderId.forEach((arr) => {
-              arr.sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
-            });
-          }
-          orders.forEach(order => {
-            if (order.id && itemsByOrderId.has(order.id)) {
-              order.order_items = itemsByOrderId.get(order.id);
-            } else if (!order.order_items) {
-              order.order_items = [];
-            }
-          });
-        }
-      }
+      ordersGrid.innerHTML = '';
+      orders.forEach((order) => {
+        ordersGrid.insertAdjacentHTML('beforeend', renderOrderCard(order));
+      });
 
-      // Render order cards using stored order_number from database
-      ordersGrid.innerHTML = orders.map(order => renderOrderCard(order)).join('');
+      setupRealtimeSubscription();
     } catch (error) {
       console.error('Error loading orders:', error);
-      ordersGrid.innerHTML = '<p style="grid-column: 1 / -1; text-align: center; color: #dc2626; padding: 40px;">Error loading orders. Please refresh the page.</p>';
+      ordersGrid.innerHTML = '<p style="grid-column: 1 / -1; text-align: center; color: #ef4444; padding: 40px;">Failed to load orders. Please refresh.</p>';
     }
   }
 
@@ -409,13 +301,13 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
   async function setupRealtimeSubscription() {
     const userId = await getCurrentUserId();
     if (!userId) {
-      console.error('❌ User ID not available for real-time subscription');
+      console.error('User ID not available for real-time subscription');
       return;
     }
 
     supabaseClient = getSupabaseClient();
     if (!supabaseClient) {
-      console.error('❌ Supabase client not available for real-time subscription');
+      console.error('Supabase client not available for real-time subscription');
       return;
     }
 
@@ -543,39 +435,36 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
 
   // Initialize order management
   async function initialize() {
-    // Wait for Supabase client to be available
-    let retries = 0;
-    while (!getSupabaseClient() && retries < 50) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      retries++;
-    }
-
-    if (!getSupabaseClient()) {
-      console.error('❌ Supabase client not available after waiting');
-      return;
-    }
-
     supabaseClient = getSupabaseClient();
-    // Wait for user authentication
-    const userId = await getCurrentUserId();
-    if (!userId) {
-      console.error('❌ User ID not available - user may not be authenticated');
+    if (!supabaseClient) {
+      console.error('Supabase client not available');
       return;
     }
+
+    // Session may still be restoring after OAuth/page load.
+    let userId = await getCurrentUserId();
+    let authRetries = 0;
+    while (!userId && authRetries < 50) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      userId = await getCurrentUserId();
+      authRetries += 1;
+    }
+    if (!userId) {
+      console.error('User ID not available - user may not be authenticated');
+      return;
+    }
+
     // Wait a bit more for the orders grid to be loaded in the DOM
     let gridRetries = 0;
     while (!document.querySelector('.orders-grid') && gridRetries < 20) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      gridRetries++;
-    }
-
-    if (!document.querySelector('.orders-grid')) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      gridRetries += 1;
     }
 
     // Render initial orders
     await renderOrders();
 
-    // Set up real-time subscription
+    // Set up real-time subscription (owner SELECT still allowed after RLS)
     await setupRealtimeSubscription();
     
     // Set up modal button event listeners
@@ -818,85 +707,24 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
     pendingPaymentOrderId = null;
     selectedPaymentMethod = null;
 
-    // Close modal
     const modal = document.getElementById('paymentMethodModal');
     if (modal) {
       modal.style.display = 'none';
     }
 
-    // Store order ID
     const orderCard = document.querySelector(`[data-order-id="${orderId}"]`);
     if (!orderCard) return;
 
-    // Show the total section if it was hidden
     const totalSection = orderCard.querySelector('.order-total');
     if (totalSection) {
       totalSection.style.display = 'flex';
       totalSection.classList.remove('hidden-total');
       orderCard.setAttribute('data-bill-revealed', 'true');
-      // Save to sessionStorage so it persists across re-renders
       saveBillRevealedOrder(orderId);
     }
 
-    supabaseClient = getSupabaseClient();
-    if (!supabaseClient) {
-      alert('Database connection error. Please refresh the page.');
-      return;
-    }
-
     try {
-      // Fetch the actual order from database to check its payment_method
-      const { data: orderData, error: fetchError } = await supabaseClient
-        .from('orders')
-        .select('payment_method')
-        .eq('id', orderId)
-        .single();
-
-      if (fetchError || !orderData) {
-        console.error('Error fetching order:', fetchError);
-        alert('Error fetching order data. Please try again.');
-        return;
-      }
-
-      const currentPaymentMethod = orderData.payment_method;
-      // Admin/Staff can always override payment method when processing Get Bill
-      // This allows admin/staff to update payment method even if customer already selected something
-      // (e.g., customer selected "Pay at Counter", admin/staff can now set it to Cash/UPI/Card)
-
-      // Use the selected payment method directly (cash, upi, or card)
-      // Database constraint now allows: 'unpaid_new', 'unpaid_pay_at_counter', 'upi', 'cash', 'card'
-      const newPaymentMethod = paymentMethod;
-      // Try RPC function first
-      let updateSucceeded = false;
-      try {
-        const { data: rpcData, error: rpcError } = await supabaseClient.rpc('update_order_payment_method', {
-          p_order_id: orderId,
-          p_payment_method: newPaymentMethod
-        });
-        
-        if (!rpcError && rpcData === true) {
-          updateSucceeded = true;
-        } else if (rpcError) {
-        }
-      } catch (rpcException) {
-      }
-
-      // Fallback to direct update
-      if (!updateSucceeded) {
-        const { error: updateError } = await supabaseClient
-          .from('orders')
-          .update({ payment_method: newPaymentMethod })
-          .eq('id', orderId);
-        
-        if (updateError) {
-          console.error('Error updating payment method:', updateError);
-          alert('Error updating payment method: ' + (updateError.message || 'Unknown error') + '. Please try again.');
-          return;
-        } else {
-        }
-      }
-
-      // Re-render orders to reflect the badge change (green badge, paid status)
+      await updateAdminOrderPayment(orderId, paymentMethod);
       await renderOrders();
     } catch (error) {
       console.error('Error processing payment:', error);
@@ -918,7 +746,7 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
       console.error('Order ID not found in modal');
       return;
     }
-    
+
     const yesBtn = modal.querySelector('.cancel-modal-btn.yes');
     if (yesBtn) {
       yesBtn.disabled = true;
@@ -926,150 +754,12 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
     }
 
     try {
-      supabaseClient = getSupabaseClient();
-      if (!supabaseClient) {
-        alert('Database connection error. Please refresh the page.');
-        return;
-      }
-
-      // Get current user ID to ensure we can update the order
-      const userId = await getCurrentUserId();
-      if (!userId) {
-        alert('Authentication error. Please log in again.');
-        return;
-      }
-
-      // Try RPC function first (if it exists)
-      let updateSucceeded = false;
-      try {
-        const { data: rpcData, error: rpcError } = await supabaseClient.rpc('update_order_cancelled', {
-          p_order_id: orderId,
-          p_cancelled: true
-        });
-        
-        if (!rpcError && (rpcData === true || rpcData === null)) {
-          updateSucceeded = true;
-        } else if (rpcError) {
-        }
-      } catch (rpcException) {
-      }
-
-      // Fallback to direct update with user_id filter to ensure RLS compliance
-      if (!updateSucceeded) {
-        // First, verify the order exists and belongs to this user
-        const { data: orderVerify, error: verifyError } = await supabaseClient
-          .from('orders')
-          .select('id, cancelled, payment_method, user_id')
-          .eq('id', orderId)
-          .eq('user_id', userId)
-          .single();
-        
-        if (verifyError || !orderVerify) {
-          console.error('Order verification failed:', verifyError);
-          alert('Order not found or you do not have permission to cancel it.');
-          if (yesBtn) {
-            yesBtn.disabled = false;
-            yesBtn.textContent = 'Yes';
-          }
-          return;
-        }
-        
-        // Check if already cancelled
-        if (orderVerify.cancelled === true) {
-          updateSucceeded = true;
-        } else {
-          // Proceed with update
-          const { data: updateData, error: updateError } = await supabaseClient
-            .from('orders')
-            .update({ cancelled: true })
-            .eq('id', orderId)
-            .eq('user_id', userId) // Add user_id filter for RLS compliance
-            .select('id, cancelled'); // Select to verify update succeeded
-          
-          if (updateError) {
-            console.error('Error cancelling order:', updateError);
-            console.error('Error details:', JSON.stringify(updateError, null, 2));
-            
-            // Provide more specific error messages
-            if (updateError.code === 'PGRST301' || updateError.message?.includes('permission') || updateError.message?.includes('policy')) {
-              alert('Permission denied: Unable to cancel order. Please check database permissions.');
-            } else {
-              alert('Error cancelling order: ' + (updateError.message || 'Unknown error. Please try again.'));
-            }
-            
-            if (yesBtn) {
-              yesBtn.disabled = false;
-              yesBtn.textContent = 'Yes';
-            }
-            return;
-          }
-          
-          // If update returned no error, it likely succeeded
-          // RLS might block the SELECT but allow the UPDATE
-          if (updateData && updateData.length > 0) {
-            // Double-check the cancelled status
-            const updatedOrder = updateData[0];
-            if (updatedOrder.cancelled === true) {
-              updateSucceeded = true;
-            } else {
-              // Try to verify by reading back
-              const { data: recheckData, error: recheckError } = await supabaseClient
-                .from('orders')
-                .select('id, cancelled')
-                .eq('id', orderId)
-                .eq('user_id', userId)
-                .single();
-              
-              if (!recheckError && recheckData && recheckData.cancelled === true) {
-                updateSucceeded = true;
-              } else {
-                // Update might have succeeded but we can't verify - assume success if no error
-                updateSucceeded = true;
-              }
-            }
-          } else {
-            // Update returned no data - this is common with RLS
-            // If there's no error, the update likely succeeded
-            updateSucceeded = true;
-            
-            // Try to verify by reading back (optional verification)
-            try {
-              const { data: recheckData, error: recheckError } = await supabaseClient
-                .from('orders')
-                .select('id, cancelled')
-                .eq('id', orderId)
-                .eq('user_id', userId)
-                .single();
-              
-              if (!recheckError && recheckData && recheckData.cancelled === true) {
-              } else if (recheckError) {
-                // Still assume success since update had no error
-              }
-            } catch (verifyErr) {
-              // Still assume success since update had no error
-            }
-          }
-        }
-      }
-
-      if (!updateSucceeded) {
-        alert('Failed to cancel order. Please try again or contact support.');
-        if (yesBtn) {
-          yesBtn.disabled = false;
-          yesBtn.textContent = 'Yes';
-        }
-        return;
-      }
-
-      // Close modal and refresh orders
+      await cancelAdminOrder(orderId);
       modal.classList.remove('show');
       await renderOrders();
-      
-      alert('Order cancelled successfully');
     } catch (error) {
       console.error('Error cancelling order:', error);
-      alert('Error cancelling order: ' + (error.message || 'Unknown error. Please try again.'));
-    } finally {
+      alert('Error cancelling order: ' + (error.message || 'Unknown error'));
       if (yesBtn) {
         yesBtn.disabled = false;
         yesBtn.textContent = 'Yes';
@@ -1091,49 +781,8 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
       return;
     }
 
-    supabaseClient = getSupabaseClient();
-    if (!supabaseClient) {
-      alert('Database connection error. Please refresh the page.');
-      return;
-    }
-
     try {
-      // Delete the order item
-      const { error: deleteError } = await supabaseClient
-        .from('order_items')
-        .delete()
-        .eq('id', itemId)
-        .eq('order_id', orderId);
-
-      if (deleteError) {
-        throw deleteError;
-      }
-
-      // Recalculate order total
-      const { data: remainingItems, error: itemsError } = await supabaseClient
-        .from('order_items')
-        .select('price, quantity')
-        .eq('order_id', orderId);
-
-      if (itemsError) {
-        throw itemsError;
-      }
-
-      const newTotal = remainingItems.reduce((sum, item) => {
-        return sum + (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1);
-      }, 0);
-
-      // Update order total
-      const { error: updateError } = await supabaseClient
-        .from('orders')
-        .update({ total_amount: newTotal })
-        .eq('id', orderId);
-
-      if (updateError) {
-        throw updateError;
-      }
-
-      // Re-render orders from the latest data in Supabase
+      await removeAdminOrderItem(orderId, itemId);
       await renderOrders();
     } catch (error) {
       console.error('Error removing item:', error);

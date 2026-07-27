@@ -1,26 +1,33 @@
 'use strict';
 
-import { supabase as sharedSupabase } from '../../lib/supabase.js';
+import { fetchMenuTheme } from '../../services/menu.js';
+import {
+  cancelStaffOrder,
+  fetchMyStaffOrders,
+  removeStaffOrderItem,
+  updateStaffOrderPayment,
+} from '../../services/staffOrders.js';
+import { startPolling } from '../../lib/polling.js';
 
 // Staff module — adapted for React
 
-  let supabaseClient;
   let orders = [];
   let selectedOrderId = null;
-  let ordersChannel = null;
+  let stopOrdersPolling = null;
   let documentMenuClickHandler = null;
   let documentCloseMenusHandler = null;
   
-  // Check authentication
+  // Phase 2: require API staff JWT (not only local ids).
   function checkAuth() {
     const staffId = localStorage.getItem('staff_id');
     const staffUserId = localStorage.getItem('staff_user_id');
-    
-    if (!staffId || !staffUserId) {
+    const staffToken = localStorage.getItem('staff_token');
+
+    if (!staffId || !staffUserId || !staffToken) {
       window.location.href = '/staff';
       return false;
     }
-    
+
     return true;
   }
   
@@ -29,314 +36,46 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
     return localStorage.getItem('staff_user_id');
   }
   
-  // Get current staff ID
-  function getCurrentStaffId() {
-    return localStorage.getItem('staff_id');
-  }
-  
-  // Load and apply theme from menu_theme table
+  // Load and apply the restaurant theme through the API.
   async function loadAndApplyTheme() {
     const restaurantId = getRestaurantId();
-    if (!restaurantId || !supabaseClient) return;
-    
+    if (!restaurantId) return;
+
     try {
-      const { data, error } = await supabaseClient
-        .from('menu_theme')
-        .select('staff_side_color, button_color')
-        .eq('user_id', restaurantId)
-        .maybeSingle();
-      
-      if (error) throw error;
-      
-      // Use staff_side_color if available, fallback to button_color for backward compatibility
-      const colorToUse = (data && data.staff_side_color) ? data.staff_side_color : (data && data.button_color) ? data.button_color : null;
+      const data = await fetchMenuTheme(restaurantId);
+      const colorToUse = data?.staff_side_color || data?.button_color || null;
       if (colorToUse) {
         const bc = String(colorToUse).trim();
         if (/^#[0-9A-Fa-f]{6}$/.test(bc)) {
-          // Calculate darker variant for hover states
           const r = parseInt(bc.slice(1, 3), 16);
           const g = parseInt(bc.slice(3, 5), 16);
           const b = parseInt(bc.slice(5, 7), 16);
           const hoverR = Math.max(0, r - 22);
           const hoverG = Math.max(0, g - 22);
           const hoverB = Math.max(0, b - 22);
-          const hoverHex = '#' + [hoverR, hoverG, hoverB].map(x => x.toString(16).padStart(2, '0')).join('');
-          
-          // Set CSS custom properties for primary color
+          const hoverHex = '#' + [hoverR, hoverG, hoverB].map((x) => x.toString(16).padStart(2, '0')).join('');
           document.documentElement.style.setProperty('--theme-primary-color', bc);
           document.documentElement.style.setProperty('--theme-primary-color-dark', hoverHex);
         }
       }
     } catch (e) {
       console.error('Error loading theme:', e);
-      // Keep default colors if theme loading fails
     }
   }
-  
-  function getSupabaseClient() {
-    return sharedSupabase || window.supabaseClient || null;
-  }
-
-  function initializeSupabase() {
-    supabaseClient = getSupabaseClient();
-    if (!supabaseClient) {
-      console.error('Supabase client not initialized');
-      return;
-    }
-    initializeApp();
-  }
-
   
   // Load orders placed by current staff
   async function loadOrders() {
     const restaurantId = getRestaurantId();
-    const currentStaffId = getCurrentStaffId();
-    
+    const currentStaffId = localStorage.getItem('staff_id');
     if (!restaurantId || !currentStaffId) {
-      console.error('Restaurant ID or Staff ID not found');
+      console.error('Restaurant ID or staff ID not found');
       return;
     }
-    
+
     try {
-      // Load orders without order_items join (fetch items separately like admin side)
-      // This avoids RLS issues with joins
-      let selectQuery = `
-        id,
-        order_number,
-        total_amount,
-        payment_method,
-        created_at,
-        cancelled,
-        table_number
-      `;
-      
-      console.log('🔍 Loading orders for staff_id:', currentStaffId, 'restaurant:', restaurantId);
-      
-      // First, try to load with staff_id filter (if column exists)
-      // This will show ONLY orders placed by the current staff member (including cancelled)
-      let { data, error } = await supabaseClient
-        .from('orders')
-        .select(selectQuery + ', staff_id')
-        .eq('user_id', restaurantId)
-        .eq('staff_id', currentStaffId)  // Filter: only orders placed by this staff member
-        .order('created_at', { ascending: false });
-      
-      // Initialize empty order_items array
-      if (data) {
-        data.forEach(order => {
-          order.order_items = [];
-        });
-      }
-      
-      // If staff_id column doesn't exist, show empty state with message
-      if (error && (error.code === '42703' || error.message.includes('staff_id'))) {
-        console.log('❌ staff_id column does not exist - cannot filter orders by staff');
-        console.log('Error:', error);
-        orders = [];
-        renderOrders();
-        
-        // Show helpful message
-        const emptyState = document.getElementById('emptyState');
-        if (emptyState) {
-          emptyState.innerHTML = `
-            <p>No orders found</p>
-            <p style="font-size: 14px; color: #9ca3af; margin-top: 8px;">
-              Staff tracking is not enabled yet.<br>
-              Please contact admin to add staff_id column to orders table.<br>
-              <br>
-              <strong>SQL to add column:</strong><br>
-              <code style="font-size: 11px; background: #f3f4f6; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 4px;">
-                ALTER TABLE orders ADD COLUMN staff_id UUID REFERENCES staff(id);
-              </code>
-            </p>
-          `;
-          emptyState.style.display = 'block';
-        }
-        return;
-      } else if (error) {
-        console.error('❌ Error loading orders:', error);
-        throw error;
-      }
-      
-      // Debug: Check if query returned data but staff_id might be null
-      if (data && data.length === 0) {
-        console.log('⚠️ Query returned 0 orders. Checking if staff_id column exists and has data...');
-        
-        // Try querying without staff_id filter to see total orders
-        const { data: allOrdersCheck, error: checkError } = await supabaseClient
-          .from('orders')
-          .select('id, order_number, staff_id')
-          .eq('user_id', restaurantId)
-          .limit(10);
-        
-        console.log('Sample orders in database:', allOrdersCheck);
-        console.log('Check error:', checkError);
-        
-        // Check if any orders have staff_id set
-        if (allOrdersCheck && allOrdersCheck.length > 0) {
-          const ordersWithStaffId = allOrdersCheck.filter(o => o.staff_id);
-          console.log(`Found ${ordersWithStaffId.length} orders with staff_id out of ${allOrdersCheck.length} total`);
-          
-          if (ordersWithStaffId.length > 0) {
-            const staffIds = [...new Set(ordersWithStaffId.map(o => o.staff_id))];
-            console.log('Staff IDs found in orders:', staffIds);
-            console.log('Your staff_id:', currentStaffId);
-            console.log('Your staff_id type:', typeof currentStaffId);
-            console.log('Match?', staffIds.includes(currentStaffId));
-            
-            // Check if it's a string comparison issue
-            const staffIdsAsStrings = staffIds.map(id => String(id));
-            const currentStaffIdString = String(currentStaffId);
-            console.log('Match (as strings)?', staffIdsAsStrings.includes(currentStaffIdString));
-          } else {
-            console.warn('⚠️ No orders have staff_id set. Orders placed by staff are not being tagged with staff_id.');
-            console.warn('This might be an RLS issue preventing the staff_id update.');
-            console.warn('Please check:');
-            console.warn('1. Does the staff_id column exist? Run: ALTER TABLE orders ADD COLUMN staff_id UUID REFERENCES staff(id);');
-            console.warn('2. Is RLS allowing updates? Check RLS policies on orders table.');
-            console.warn('3. When placing orders, check console for "✅ Order tagged with staff_id" message.');
-          }
-        } else if (allOrdersCheck && allOrdersCheck.length === 0) {
-          console.log('ℹ️ No orders found for this restaurant at all.');
-        }
-      }
-      
-      // Fetch order items separately for all orders (same approach as admin side)
-      // This ensures items are always loaded even if the join is blocked by RLS
-      if (data && data.length > 0) {
-        const orderIds = data.map(o => o.id).filter(Boolean);
-        
-        if (orderIds.length > 0) {
-          // Fetch all items for all orders in one query (much faster)
-          const { data: allItems, error: itemsError } = await supabaseClient
-            .from('order_items')
-            .select('id, dish_id, dish_name, price, quantity, order_id')
-            .in('order_id', orderIds);
-          
-          if (!itemsError && allItems) {
-            console.log(`📦 Fetched ${allItems.length} items for ${orderIds.length} orders`);
-            
-            // Group items by order_id for fast lookup (same as admin side)
-            const itemsByOrderId = new Map();
-            allItems.forEach(item => {
-              if (!itemsByOrderId.has(item.order_id)) {
-                itemsByOrderId.set(item.order_id, []);
-              }
-              itemsByOrderId.get(item.order_id).push(item);
-            });
-            
-            // Assign items to their respective orders
-            data.forEach(order => {
-              if (order.id && itemsByOrderId.has(order.id)) {
-                order.order_items = itemsByOrderId.get(order.id);
-                console.log(`✅ Order #${order.order_number}: ${order.order_items.length} items`);
-              } else {
-                order.order_items = [];
-                console.warn(`⚠️ Order #${order.order_number}: No items found (order_id: ${order.id})`);
-              }
-            });
-            
-            console.log(`✅ Found ${data.length} order(s) placed by you with ${allItems.length} total items`);
-          } else if (itemsError) {
-            console.error('❌ Error fetching order items:', itemsError);
-            console.error('Error details:', JSON.stringify(itemsError, null, 2));
-            // If items can't be fetched, at least show orders without items
-            data.forEach(order => {
-              if (!order.order_items) {
-                order.order_items = [];
-              }
-            });
-          } else {
-            console.warn('⚠️ No items returned from query (allItems is null or empty)');
-            data.forEach(order => {
-              if (!order.order_items) {
-                order.order_items = [];
-              }
-            });
-          }
-        }
-      } else {
-        console.log(`ℹ️ No orders found placed by you (staff_id: ${currentStaffId})`);
-        // Debug: Check if there are any orders with staff_id
-        const { data: allOrders } = await supabaseClient
-          .from('orders')
-          .select('id, order_number, staff_id')
-          .eq('user_id', restaurantId)
-          .limit(10);
-        console.log('Sample orders in database:', allOrders);
-        
-        // Also check if staff_id column exists by trying a query without filter
-        try {
-          const { data: testOrders, error: testError } = await supabaseClient
-            .from('orders')
-            .select('id, order_number, staff_id')
-            .eq('user_id', restaurantId)
-            .not('staff_id', 'is', null)
-            .limit(5);
-          
-          if (testError && (testError.code === '42703' || testError.message.includes('staff_id'))) {
-            console.log('❌ staff_id column does not exist in orders table');
-            console.log('Please run: ALTER TABLE orders ADD COLUMN staff_id UUID REFERENCES staff(id);');
-            
-            // Show helpful message in UI
-            const emptyState = document.getElementById('emptyState');
-            if (emptyState) {
-              emptyState.innerHTML = `
-                <p>No orders found</p>
-                <p style="font-size: 14px; color: #9ca3af; margin-top: 8px;">
-                  Staff tracking is not enabled yet.<br>
-                  Please contact admin to add staff_id column to orders table.<br>
-                  <br>
-                  <strong>SQL to add column:</strong><br>
-                  <code style="font-size: 11px; background: #f3f4f6; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 4px;">
-                    ALTER TABLE orders ADD COLUMN staff_id UUID REFERENCES staff(id);
-                  </code>
-                </p>
-              `;
-              emptyState.style.display = 'block';
-            }
-          } else if (testOrders && testOrders.length > 0) {
-            console.log(`ℹ️ Found ${testOrders.length} orders with staff_id, but none match your staff_id (${currentStaffId})`);
-            console.log('Sample staff_ids:', testOrders.map(o => o.staff_id));
-            console.log('Your staff_id:', currentStaffId);
-            
-            // Show message that no orders match
-            const emptyState = document.getElementById('emptyState');
-            if (emptyState) {
-              emptyState.innerHTML = `
-                <p>No orders found</p>
-                <p style="font-size: 14px; color: #9ca3af; margin-top: 8px;">
-                  You haven't placed any orders yet.<br>
-                  Orders you place will appear here.
-                </p>
-              `;
-              emptyState.style.display = 'block';
-            }
-          } else {
-            // No orders with staff_id at all
-            const emptyState = document.getElementById('emptyState');
-            if (emptyState) {
-              emptyState.innerHTML = `
-                <p>No orders found</p>
-                <p style="font-size: 14px; color: #9ca3af; margin-top: 8px;">
-                  You haven't placed any orders yet.<br>
-                  <br>
-                  <strong>Note:</strong> Orders placed by staff may not be tagged with staff_id.<br>
-                  Check if RLS policies allow updating orders.staff_id.
-                </p>
-              `;
-              emptyState.style.display = 'block';
-            }
-          }
-        } catch (e) {
-          console.error('Error checking staff_id:', e);
-        }
-      }
-      
-      orders = data || [];
-      console.log(`📋 Rendering ${orders.length} order(s)`);
+      orders = await fetchMyStaffOrders();
       renderOrders();
-      setupRealtimeSubscription();
+      setupOrdersPolling();
     } catch (error) {
       console.error('Error loading orders:', error);
       alert('Failed to load orders. Please refresh the page.');
@@ -477,7 +216,7 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
       'cash': 'Cash',
       'card': 'Card',
       'unpaid_new': 'New',
-      'unpaid_pay_at_counter': 'Pay at Counter'
+      'unpaid_pay_at_counter': 'Asking Bill'
     };
     return methodMap[method] || method;
   }
@@ -528,7 +267,7 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
       badgeText = 'Cancelled';
     } else if (order.payment_method === 'unpaid_pay_at_counter') {
       badgeClass = 'counter';
-      badgeText = 'Pay at Counter';
+      badgeText = 'Asking Bill';
     } else if (isPaid && order.payment_method) {
       const paymentMethod = formatPaymentMethod(order.payment_method);
       badgeClass = getPaymentBadgeClass(order.payment_method);
@@ -724,36 +463,10 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
         return;
       }
       
-      // Try RPC function first
-      let updateSucceeded = false;
-      try {
-        const { data: rpcData, error: rpcError } = await supabaseClient.rpc('update_order_payment_method', {
-          p_order_id: orderId,
-          p_payment_method: newPaymentMethod
-        });
-        
-        if (!rpcError && rpcData === true) {
-          updateSucceeded = true;
-        }
-      } catch (rpcException) {
-        console.warn('RPC function failed, trying direct update');
-      }
-      
-      // Fallback to direct update
-      if (!updateSucceeded) {
-        const { error: updateError } = await supabaseClient
-          .from('orders')
-          .update({ payment_method: newPaymentMethod })
-          .eq('id', orderId);
-        
-        if (updateError) {
-          throw updateError;
-        }
-      }
-      
-      // Reload orders to update display
+      await updateStaffOrderPayment(orderId, newPaymentMethod);
+
       await loadOrders();
-      
+
       alert('Bill processed successfully!');
       
     } catch (error) {
@@ -786,19 +499,15 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
 
   // Confirm and cancel order (same as admin side) - moved outside setupEventListeners for global access
   async function confirmCancelOrder() {
-    console.log('confirmCancelOrder called');
     const modal = document.getElementById('cancelModalOverlay');
-    if (!modal) {
-      console.error('Cancel modal not found');
-      return;
-    }
+    if (!modal) return;
 
     const orderId = modal.getAttribute('data-order-id');
     if (!orderId) {
       console.error('Order ID not found in modal');
       return;
     }
-    
+
     console.log('Cancelling order:', orderId);
 
     const yesBtn = modal.querySelector('.cancel-modal-btn.yes');
@@ -808,53 +517,13 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
     }
 
     try {
-      if (!supabaseClient) {
-        alert('Database connection error. Please refresh the page.');
-        return;
-      }
-
-      // Try RPC function first (if it exists)
-      let updateSucceeded = false;
-      try {
-        const { data: rpcData, error: rpcError } = await supabaseClient.rpc('update_order_cancelled', {
-          p_order_id: orderId,
-          p_cancelled: true
-        });
-        
-        if (!rpcError && (rpcData === true || rpcData === null)) {
-          updateSucceeded = true;
-          console.log('Order cancelled successfully via RPC');
-        } else if (rpcError) {
-          console.warn('RPC function failed, trying direct update:', rpcError);
-        }
-      } catch (rpcException) {
-        console.warn('RPC function failed, trying direct update');
-      }
-
-      // Fallback to direct update
-      if (!updateSucceeded) {
-        const { error: updateError } = await supabaseClient
-          .from('orders')
-          .update({ cancelled: true })
-          .eq('id', orderId);
-        
-        if (updateError) {
-          throw updateError;
-        }
-      }
-
-      // Close modal
+      await cancelStaffOrder(orderId);
       modal.classList.remove('show');
-      
-      // Re-render orders to reflect cancellation
       await loadOrders();
-      
       console.log('Order cancelled successfully');
     } catch (error) {
       console.error('Error cancelling order:', error);
       alert('Error cancelling order: ' + (error.message || 'Unknown error'));
-      
-      // Re-enable button
       if (yesBtn) {
         yesBtn.disabled = false;
         yesBtn.textContent = 'Yes';
@@ -870,31 +539,10 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
     }
   }
 
-  // Setup real-time subscription
-  function setupRealtimeSubscription() {
-    const restaurantId = getRestaurantId();
-    const currentStaffId = getCurrentStaffId();
-    if (!restaurantId || !currentStaffId || !supabaseClient) return;
-
-    // loadOrders() calls this after every refresh — only subscribe once
-    if (ordersChannel) return;
-    
-    ordersChannel = supabaseClient
-      .channel('staff-orders-by-me-channel')
-      .on('postgres_changes', 
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-          filter: `user_id=eq.${restaurantId}`
-        },
-        async (payload) => {
-          console.log('Order change detected:', payload);
-          // Reload orders to get updated list
-          await loadOrders();
-        }
-      )
-      .subscribe();
+  // Staff order updates come from the API because RLS blocks anon order reads.
+  function setupOrdersPolling() {
+    if (stopOrdersPolling) return;
+    stopOrdersPolling = startPolling(() => loadOrders(), 8000);
   }
   
   // Setup event listeners (same as admin side)
@@ -964,74 +612,15 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
       saveBillRevealedOrder(orderId);
     }
 
-    // Get Supabase client
-    if (typeof getSupabaseClient === 'function') {
-      supabaseClient = getSupabaseClient();
-    }
-    if (!supabaseClient) {
-      alert('Database connection error. Please refresh the page.');
-      return;
-    }
-
     try {
-      // Fetch the actual order from database to check its payment_method
-      const { data: orderData, error: fetchError } = await supabaseClient
-        .from('orders')
-        .select('payment_method')
-        .eq('id', orderId)
-        .single();
+      const order = orders.find((o) => o.id === orderId);
+      const currentPaymentMethod = order?.payment_method;
+      console.log('Current payment method:', currentPaymentMethod);
 
-      if (fetchError || !orderData) {
-        console.error('Error fetching order:', fetchError);
-        alert('Error fetching order data. Please try again.');
-        return;
-      }
-
-      const currentPaymentMethod = orderData.payment_method;
-      console.log('Current payment method in database:', currentPaymentMethod);
-      
-      // Admin/Staff can always override payment method when processing Get Bill
-      // This allows admin/staff to update payment method even if customer already selected something
-      // (e.g., customer selected "Pay at Counter", admin/staff can now set it to Cash/UPI/Card)
-
-      // Use the selected payment method directly (cash, upi, or card)
-      // Database constraint now allows: 'unpaid_new', 'unpaid_pay_at_counter', 'upi', 'cash', 'card'
       const newPaymentMethod = paymentMethod;
       console.log('Updating payment method to:', newPaymentMethod, 'for order:', orderId);
 
-      // Try RPC function first
-      let updateSucceeded = false;
-      try {
-        const { data: rpcData, error: rpcError } = await supabaseClient.rpc('update_order_payment_method', {
-          p_order_id: orderId,
-          p_payment_method: newPaymentMethod
-        });
-        
-        if (!rpcError && rpcData === true) {
-          updateSucceeded = true;
-          console.log('Payment method updated via RPC:', newPaymentMethod);
-        } else if (rpcError) {
-          console.warn('RPC error:', rpcError);
-        }
-      } catch (rpcException) {
-        console.warn('RPC function failed, trying direct update:', rpcException);
-      }
-
-      // Fallback to direct update
-      if (!updateSucceeded) {
-        const { error: updateError } = await supabaseClient
-          .from('orders')
-          .update({ payment_method: newPaymentMethod })
-          .eq('id', orderId);
-        
-        if (updateError) {
-          console.error('Error updating payment method:', updateError);
-          alert('Error updating payment method: ' + (updateError.message || 'Unknown error') + '. Please try again.');
-          return;
-        } else {
-          console.log('Payment method updated via direct update:', newPaymentMethod);
-        }
-      }
+      await updateStaffOrderPayment(orderId, newPaymentMethod);
 
       // Re-render orders to reflect the badge change
       await loadOrders();
@@ -1337,12 +926,6 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
       return;
     }
 
-    if (!supabaseClient) {
-      alert('Database connection error. Please refresh the page.');
-      closeRemoveItemModal();
-      return;
-    }
-
     const yesBtn = document.getElementById('removeItemModalYes');
     if (yesBtn) {
       yesBtn.disabled = true;
@@ -1350,63 +933,24 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
     }
 
     try {
-      // Delete the order item
-      const { error: deleteError } = await supabaseClient
-        .from('order_items')
-        .delete()
-        .eq('id', itemId)
-        .eq('order_id', orderId);
+      const newTotal = await removeStaffOrderItem(orderId, itemId);
 
-      if (deleteError) {
-        throw deleteError;
-      }
-
-      // Recalculate order total
-      const { data: remainingItems, error: itemsError } = await supabaseClient
-        .from('order_items')
-        .select('price, quantity')
-        .eq('order_id', orderId);
-
-      if (itemsError) {
-        throw itemsError;
-      }
-
-      const newTotal = remainingItems.reduce((sum, item) => {
-        return sum + (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1);
-      }, 0);
-
-      // Update order total
-      const { error: updateError } = await supabaseClient
-        .from('orders')
-        .update({ total_amount: newTotal })
-        .eq('id', orderId);
-
-      if (updateError) {
-        throw updateError;
-      }
-
-      // Optimistically update in-memory orders array so UI updates immediately.
-      // We intentionally avoid forcing an immediate reload here because a fast
-      // reload with stale data can briefly re-add the item to the card.
       if (Array.isArray(orders) && orders.length > 0) {
-        const orderIndex = orders.findIndex(o => o.id === orderId);
+        const orderIndex = orders.findIndex((o) => o.id === orderId);
         if (orderIndex !== -1) {
           const order = orders[orderIndex];
           if (order && Array.isArray(order.order_items)) {
-            // Compare IDs as strings so type differences (number vs string)
-            // don't prevent the item from being removed in-memory.
-            order.order_items = order.order_items.filter(item => String(item.id) !== String(itemId));
+            order.order_items = order.order_items.filter((item) => String(item.id) !== String(itemId));
             order.total_amount = newTotal;
           }
         }
-        // Re-render using the updated in-memory data
         renderOrders();
       }
 
       closeRemoveItemModal();
     } catch (error) {
       console.error('Error removing item:', error);
-      alert('Error removing item: ' + (error.message || 'Unknown error. Please try again.'));
+      alert('Error removing item: ' + (error.message || 'Unknown error'));
       if (yesBtn) {
         yesBtn.disabled = false;
         yesBtn.textContent = 'Yes';
@@ -1429,16 +973,15 @@ import { supabase as sharedSupabase } from '../../lib/supabase.js';
   window.closeCancelModal = closeCancelModal;
 
 export async function bootstrapOrdersByMe() {
-  supabaseClient = getSupabaseClient();
-  window.supabaseClient = supabaseClient;
-  if (!supabaseClient) return;
-  initializeSupabase();
+  if (!checkAuth()) return;
+  initializeApp();
 }
 
 export function teardownOrdersByMe() {
-  const client = getSupabaseClient();
-  if (ordersChannel && client) client.removeChannel(ordersChannel);
-  ordersChannel = null;
+  if (stopOrdersPolling) {
+    stopOrdersPolling();
+    stopOrdersPolling = null;
+  }
   if (documentMenuClickHandler) {
     document.removeEventListener('click', documentMenuClickHandler);
     documentMenuClickHandler = null;

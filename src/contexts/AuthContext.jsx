@@ -1,57 +1,29 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
-import { applyAdminHeaderTheme, clearAdminHeaderTheme } from '../utils/adminTheme';
-import { ensureDefaultMenuTheme } from '../services/menu';
-import { DEFAULT_PRIMARY_COLOR, resolveThemeColor } from '../utils/menuThemeDefaults';
 import {
-  adminOAuthRedirectUrl,
-  clearOAuthParamsFromUrl,
-  isOAuthReturnUrl,
-  readOAuthErrorFromUrl,
-} from '../utils/oauth';
+  adminLogin,
+  adminSignup,
+  clearAdminSession,
+  getAdminSession,
+  validateAdminSession,
+} from '../services/adminAuth';
+import { applyAdminHeaderTheme, clearAdminHeaderTheme } from '../utils/adminTheme';
+import { ensureDefaultMenuTheme, fetchMenuTheme } from '../services/menu';
+import { DEFAULT_PRIMARY_COLOR, resolveThemeColor } from '../utils/menuThemeDefaults';
 
 const AuthContext = createContext(null);
 
-async function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function waitForSession(retries = 5, initialDelayMs = 1000, retryDelayMs = 500) {
-  if (initialDelayMs > 0) {
-    await wait(initialDelayMs);
-  }
-
-  for (let attempt = 0; attempt < retries; attempt += 1) {
-    const { data: { session }, error } = await supabase.auth.getSession();
-    if (error) throw error;
-    if (session) return session;
-    if (attempt < retries - 1) {
-      await wait(retryDelayMs);
-    }
-  }
-
-  return null;
-}
-
 export function AuthProvider({ children }) {
   const navigate = useNavigate();
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(() => getAdminSession());
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState('');
-  const handlingSignInRef = useRef(false);
-  const completedSignInRef = useRef(false);
 
   const applyThemeForUser = useCallback(async (userId) => {
-    if (!userId || !supabase) return;
+    if (!userId) return;
     try {
       await ensureDefaultMenuTheme(userId);
-      const { data, error } = await supabase
-        .from('menu_theme')
-        .select('admin_side_color, button_color')
-        .eq('user_id', userId)
-        .maybeSingle();
-      if (error) throw error;
+      const data = await fetchMenuTheme(userId);
       applyAdminHeaderTheme(
         resolveThemeColor(data?.admin_side_color, data?.button_color, DEFAULT_PRIMARY_COLOR),
       );
@@ -60,181 +32,73 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  const applySession = useCallback(
-    async (nextSession, { withAdminTheme = window.location.pathname.startsWith('/admin') } = {}) => {
-      if (!nextSession) return;
-      setSession(nextSession);
-      window.currentUserId = nextSession.user.id;
-      window.supabaseClient = supabase;
-      if (withAdminTheme) {
-        await applyThemeForUser(nextSession.user.id);
-      }
-    },
-    [applyThemeForUser],
-  );
-
-  const restoreSession = useCallback(
-    async (nextSession) => {
-      if (!nextSession || completedSignInRef.current) return;
-      completedSignInRef.current = true;
-      await applySession(nextSession);
-    },
-    [applySession],
-  );
-
-  const rejectIfNewUser = useCallback(async (nextSession) => {
-    const userCreatedAt = new Date(nextSession.user.created_at);
-    const timeDiff = (Date.now() - userCreatedAt.getTime()) / 1000;
-    if (timeDiff >= 5) return false;
-
-    handlingSignInRef.current = true;
-    await supabase.auth.signOut();
-    handlingSignInRef.current = false;
-    setSession(null);
-    setAuthError('Access denied. Only existing users can login. Please contact administrator.');
-    return true;
-  }, []);
-
-  const completeSignIn = useCallback(
-    async (nextSession) => {
-      if (!nextSession || handlingSignInRef.current || completedSignInRef.current) return false;
-      if (await rejectIfNewUser(nextSession)) return false;
-
-      completedSignInRef.current = true;
-      await applySession(nextSession, { withAdminTheme: true });
-      setAuthError('');
-
-      const path = window.location.pathname;
-      if (path === '/' || isOAuthReturnUrl()) {
-        navigate('/admin', { replace: true });
-      }
-      return true;
-    },
-    [applySession, navigate, rejectIfNewUser],
-  );
-
   useEffect(() => {
-    if (!supabase) {
-      setAuthError('Supabase is not configured. Check zen-menu/.env');
-      setLoading(false);
-      return undefined;
-    }
+    let cancelled = false;
 
-    let mounted = true;
-    const oauthReturn = isOAuthReturnUrl();
-    const urlOAuthError = readOAuthErrorFromUrl();
+    async function restore() {
+      const current = await validateAdminSession();
+      if (cancelled) return;
 
-    if (urlOAuthError) {
-      setAuthError(`Authentication failed: ${urlOAuthError}`);
-      clearOAuthParamsFromUrl();
-    }
-
-    async function init() {
-      try {
-        let currentSession = null;
-
-        if (oauthReturn && !urlOAuthError) {
-          currentSession = await waitForSession();
-          clearOAuthParamsFromUrl();
-        } else {
-          const { data: { session: storedSession }, error } = await supabase.auth.getSession();
-          if (error) throw error;
-          currentSession = storedSession;
-        }
-
-        if (!mounted) return;
-
-        if (currentSession) {
-          if (oauthReturn && !urlOAuthError) {
-            await completeSignIn(currentSession);
-          } else {
-            await restoreSession(currentSession);
-          }
-        } else if (oauthReturn && !urlOAuthError) {
-          const redirectHint = adminOAuthRedirectUrl();
-          setAuthError(
-            `Authentication incomplete. Add this exact URL in Supabase → Authentication → URL Configuration → Redirect URLs: ${redirectHint}`,
-          );
-        }
-      } catch (error) {
-        if (mounted) {
-          setAuthError(error?.message || 'Authentication failed. Please try again.');
-        }
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    }
-
-    init();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
-      if (!mounted) return;
-
-      if (event === 'SIGNED_IN' && nextSession) {
-        await completeSignIn(nextSession);
-        if (mounted) setLoading(false);
-        return;
-      }
-
-      if (event === 'TOKEN_REFRESHED' && nextSession) {
-        await applySession(nextSession);
-        return;
-      }
-
-      if (event === 'SIGNED_OUT') {
-        completedSignInRef.current = false;
-        setSession(null);
-        window.currentUserId = null;
+      setSession(current);
+      if (current?.user?.id) {
+        await applyThemeForUser(current.user.id);
+      } else {
         clearAdminHeaderTheme();
       }
-    });
+      if (!cancelled) setLoading(false);
+    }
 
+    restore();
     return () => {
-      mounted = false;
-      subscription.unsubscribe();
+      cancelled = true;
     };
-  }, [applySession, completeSignIn, restoreSession]);
+  }, [applyThemeForUser]);
 
-  const signInWithGoogle = useCallback(async () => {
-    if (!supabase) {
-      setAuthError('Authentication service not ready. Please refresh the page.');
-      return;
-    }
+  const login = useCallback(
+    async (email, password) => {
+      setAuthError('');
+      const result = await adminLogin(email, password);
+      if (result.error) {
+        setAuthError(result.error);
+        return result;
+      }
 
-    setAuthError('');
-    const redirectUrl = adminOAuthRedirectUrl();
+      const nextSession = getAdminSession();
+      setSession(nextSession);
+      if (nextSession?.user?.id) {
+        await applyThemeForUser(nextSession.user.id);
+      }
+      navigate('/admin', { replace: true });
+      return result;
+    },
+    [applyThemeForUser, navigate],
+  );
 
-    if (window.location.hash) {
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
+  const signup = useCallback(
+    async ({ email, password, name }) => {
+      setAuthError('');
+      const result = await adminSignup({ email, password, name });
+      if (result.error) {
+        setAuthError(result.error);
+        return result;
+      }
 
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: redirectUrl,
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'select_account',
-        },
-        skipBrowserRedirect: false,
-      },
-    });
-
-    if (error) {
-      setAuthError(`Authentication failed: ${error.message}`);
-      return;
-    }
-
-    if (data?.url) {
-      window.location.assign(data.url);
-    } else {
-      setAuthError('Could not start Google sign-in. Please try again.');
-    }
-  }, []);
+      const nextSession = getAdminSession();
+      setSession(nextSession);
+      if (nextSession?.user?.id) {
+        await applyThemeForUser(nextSession.user.id);
+      }
+      navigate('/admin', { replace: true });
+      return result;
+    },
+    [applyThemeForUser, navigate],
+  );
 
   const signOut = useCallback(async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
+    await clearAdminSession();
+    setSession(null);
+    clearAdminHeaderTheme();
+    setAuthError('');
     navigate('/', { replace: true });
   }, [navigate]);
 
@@ -246,10 +110,11 @@ export function AuthProvider({ children }) {
       authError,
       setAuthError,
       isAuthenticated: Boolean(session),
-      signInWithGoogle,
+      login,
+      signup,
       signOut,
     }),
-    [session, loading, authError, signInWithGoogle, signOut],
+    [session, loading, authError, login, signup, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
