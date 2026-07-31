@@ -102,6 +102,20 @@ export function AuthProvider({ children }) {
     navigate('/', { replace: true });
   }, [navigate]);
 
+  const completeAuthSession = useCallback(
+    async (result) => {
+      if (result?.error || !result?.token) return result;
+      const nextSession = getAdminSession();
+      setSession(nextSession);
+      if (nextSession?.user?.id) {
+        await applyThemeForUser(nextSession.user.id);
+      }
+      navigate('/admin', { replace: true });
+      return result;
+    },
+    [applyThemeForUser, navigate],
+  );
+
   const value = useMemo(
     () => ({
       session,
@@ -113,8 +127,9 @@ export function AuthProvider({ children }) {
       login,
       signup,
       signOut,
+      completeAuthSession,
     }),
-    [session, loading, authError, login, signup, signOut],
+    [session, loading, authError, login, signup, signOut, completeAuthSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
