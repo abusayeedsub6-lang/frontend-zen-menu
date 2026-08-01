@@ -2,11 +2,12 @@ const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replac
 const ADMIN_TOKEN_KEY = 'admin_token';
 
 export class ApiError extends Error {
-  constructor(message, status, code = null) {
+  constructor(message, status, code = null, details = null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -40,6 +41,7 @@ export async function apiRequest(path, options = {}) {
       data?.message || data?.error || `Request failed (${response.status})`,
       response.status,
       data?.code || null,
+      data,
     );
   }
 

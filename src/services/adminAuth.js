@@ -104,13 +104,90 @@ export async function requestAdminPasswordReset(email) {
       success: true,
       message:
         data?.message ||
-        'If an account exists for that email, password reset instructions will be sent.',
+        'If an account exists for that email, a verification code has been sent.',
+      expiresInSeconds: data?.expiresInSeconds,
+      resendCooldownSeconds: data?.resendCooldownSeconds,
     };
   } catch (error) {
     if (error instanceof ApiError) {
-      return { error: error.message || 'Could not start password reset. Please try again.' };
+      return {
+        error: error.message || 'Could not start password reset. Please try again.',
+        retryAfterSeconds: error.details?.retryAfterSeconds,
+      };
     }
     console.error('Admin forgot password error:', error);
+    return { error: 'An error occurred. Please try again.' };
+  }
+}
+
+export async function resendAdminPasswordOtp(email) {
+  try {
+    const data = await apiRequest('/auth/forgot-password/resend', {
+      method: 'POST',
+      body: { email },
+    });
+
+    return {
+      success: true,
+      message: data?.message || 'A new code was sent.',
+      expiresInSeconds: data?.expiresInSeconds,
+      resendCooldownSeconds: data?.resendCooldownSeconds,
+    };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return {
+        error: error.message || 'Could not resend code. Please try again.',
+        retryAfterSeconds: error.details?.retryAfterSeconds,
+      };
+    }
+    console.error('Admin resend OTP error:', error);
+    return { error: 'An error occurred. Please try again.' };
+  }
+}
+
+export async function verifyAdminPasswordOtp(email, otp) {
+  try {
+    const data = await apiRequest('/auth/forgot-password/verify-otp', {
+      method: 'POST',
+      body: { email, otp },
+    });
+
+    if (!data?.resetToken) {
+      return { error: 'Could not verify code. Please try again.' };
+    }
+
+    return {
+      success: true,
+      resetToken: data.resetToken,
+      expiresInSeconds: data.expiresInSeconds,
+    };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return { error: error.message || 'Invalid or expired code.' };
+    }
+    console.error('Admin verify OTP error:', error);
+    return { error: 'An error occurred. Please try again.' };
+  }
+}
+
+export async function resetAdminPassword({ resetToken, password }) {
+  try {
+    const data = await apiRequest('/auth/forgot-password/reset', {
+      method: 'POST',
+      body: { resetToken, password },
+    });
+
+    if (!data?.token || !data?.user?.id) {
+      return { error: 'Could not update password. Please try again.' };
+    }
+
+    storeAdminSession(data.token, data.user);
+    return { success: true, user: data.user, token: data.token };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return { error: error.message || 'Could not update password. Please try again.' };
+    }
+    console.error('Admin reset password error:', error);
     return { error: 'An error occurred. Please try again.' };
   }
 }
