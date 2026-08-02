@@ -12,7 +12,7 @@ export class ApiError extends Error {
 }
 
 export async function apiRequest(path, options = {}) {
-  const { method = 'GET', body, token, headers: extraHeaders } = options;
+  const { method = 'GET', body, token, headers: extraHeaders, timeoutMs } = options;
 
   const headers = {
     ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
@@ -20,11 +20,28 @@ export async function apiRequest(path, options = {}) {
     ...extraHeaders,
   };
 
-  const response = await fetch(`${API_URL}${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  const controller = typeof timeoutMs === 'number' ? new AbortController() : null;
+  const timer =
+    controller && timeoutMs > 0
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : null;
+
+  let response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: controller?.signal,
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new ApiError('Request timed out. Please try again.', 408);
+    }
+    throw error;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 
   let data = null;
   const text = await response.text();

@@ -98,6 +98,7 @@ export async function requestAdminPasswordReset(email) {
     const data = await apiRequest('/auth/forgot-password', {
       method: 'POST',
       body: { email },
+      timeoutMs: 35_000,
     });
 
     return {
@@ -125,6 +126,7 @@ export async function resendAdminPasswordOtp(email) {
     const data = await apiRequest('/auth/forgot-password/resend', {
       method: 'POST',
       body: { email },
+      timeoutMs: 35_000,
     });
 
     return {
