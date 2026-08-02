@@ -104,7 +104,7 @@ export default function AdminLayout() {
   const isOrdersRoute = location.pathname === '/admin' || location.pathname === '/admin/';
   const isDashboardRoute = location.pathname.startsWith('/admin/dashboard');
 
-  usePageTitle('Your Admin Panel');
+  usePageTitle('Zen Menu Admin');
 
   useEffect(() => {
     if (!user?.id) return undefined;
@@ -286,7 +286,20 @@ export default function AdminLayout() {
         <button type="button" className="menu-toggle" id="menuToggle" aria-label="Toggle menu" onClick={toggleMobileSidebar}>
           ☰
         </button>
-        Your Admin Panel
+        {isManageMenu ? (
+          <button
+            type="button"
+            className="admin-back-btn"
+            aria-label="Back to orders"
+            onClick={() => navigate('/admin')}
+          >
+            <img src="/icons/back-exit.svg" alt="" className="admin-back-btn-icon" width="22" height="22" />
+          </button>
+        ) : null}
+        <h1 className="admin-header-title">
+          <span className="admin-header-brand">Zen Menu</span>
+          <span className="admin-header-role">Admin</span>
+        </h1>
         <ProfileDropdown user={user} onSignOut={signOut} />
       </header>
 

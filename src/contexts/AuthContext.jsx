@@ -95,11 +95,13 @@ export function AuthProvider({ children }) {
   );
 
   const signOut = useCallback(async () => {
-    await clearAdminSession();
+    // Drop auth state + leave admin routes first so manage-menu teardown
+    // runs before the token is removed (avoids in-flight "Not authenticated" alerts).
     setSession(null);
     clearAdminHeaderTheme();
     setAuthError('');
     navigate('/', { replace: true });
+    await clearAdminSession();
   }, [navigate]);
 
   const completeAuthSession = useCallback(

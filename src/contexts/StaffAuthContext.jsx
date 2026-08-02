@@ -71,10 +71,10 @@ export function StaffAuthProvider({ children }) {
   );
 
   const logout = useCallback(async () => {
-    await clearStaffSession();
     setSession(null);
     clearStaffTheme();
     navigate('/staff', { replace: true });
+    await clearStaffSession();
   }, [navigate]);
 
   const value = useMemo(

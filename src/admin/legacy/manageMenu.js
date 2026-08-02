@@ -24,6 +24,8 @@ import {
   // State variables
   let menu = [];
   let categories = [];
+  let categoriesLoaded = false;
+  let categoriesLoadPromise = null;
   let editingDishId = null;
   let editingCategoryId = null;
 
@@ -36,22 +38,44 @@ import {
     return session?.user?.id || null;
   }
 
+  function isUnauthenticatedError(error) {
+    return (
+      error?.message === 'Not authenticated' ||
+      error?.status === 401 ||
+      error?.statusCode === 401
+    );
+  }
+
   // ==================== SUPABASE DATA OPERATIONS ====================
 
   // Load categories from Supabase (filtered by user_id)
   async function loadCategories() {
-    try {
-      categories = await fetchAdminCategories();
-      updateCategoryDropdown();
-      if (document.getElementById('categoryTableBody')) {
-        renderCategories();
+    if (categoriesLoadPromise) return categoriesLoadPromise;
+
+    categoriesLoadPromise = (async () => {
+      try {
+        categories = await fetchAdminCategories();
+        categoriesLoaded = true;
+        updateCategoryDropdown();
+        if (document.getElementById('categoryTableBody')) {
+          paintCategoryRows();
+        }
+        return categories;
+      } catch (error) {
+        // Logout clears the token while this page may still be mounted — don't alert.
+        if (isUnauthenticatedError(error)) {
+          console.warn('Error loading categories:', error);
+          return categories;
+        }
+        console.error('Error loading categories:', error);
+        alert('Failed to load categories: ' + error.message);
+        return [];
+      } finally {
+        categoriesLoadPromise = null;
       }
-      return categories;
-    } catch (error) {
-      console.error('Error loading categories:', error);
-      alert('Failed to load categories: ' + error.message);
-      return [];
-    }
+    })();
+
+    return categoriesLoadPromise;
   }
 
   // Load dishes from Supabase with category names (filtered by user_id)
@@ -64,6 +88,10 @@ import {
       }
       return menu;
     } catch (error) {
+      if (isUnauthenticatedError(error)) {
+        console.warn('Error loading dishes:', error);
+        return menu;
+      }
       console.error('Error loading dishes:', error);
       alert('Failed to load dishes: ' + error.message);
       return [];
@@ -72,7 +100,8 @@ import {
 
   // Category management functions
   async function getCategories() {
-    if (categories.length === 0) {
+    // Empty list is valid — do not treat it as "not loaded" (that caused an infinite loop).
+    if (!categoriesLoaded) {
       await loadCategories();
     }
     return categories.map(c => c.name);
@@ -128,7 +157,20 @@ import {
     const categoryInput = document.getElementById('category');
     if (!categoryInput) return;
     categoryInput.innerHTML = '';
-    categories.forEach(cat => {
+
+    if (!categories.length) {
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.text = 'No categories yet';
+      placeholder.disabled = true;
+      placeholder.selected = true;
+      categoryInput.appendChild(placeholder);
+      categoryInput.classList.add('is-empty');
+      return;
+    }
+
+    categoryInput.classList.remove('is-empty');
+    categories.forEach((cat) => {
       const opt = document.createElement('option');
       opt.text = cat.name;
       opt.value = cat.id; // Store category ID, not name
@@ -616,12 +658,10 @@ import {
 
   // ==================== RENDER FUNCTIONS ====================
 
-  async function renderCategories() {
+  function paintCategoryRows() {
     const tbody = document.getElementById('categoryTableBody');
     if (!tbody) return;
     tbody.innerHTML = '';
-    
-    await getCategories(); // Ensure categories are loaded
 
     categories.forEach((cat, index) => {
       const tr = document.createElement('tr');
@@ -661,6 +701,14 @@ import {
       
       tbody.appendChild(tr);
     });
+  }
+
+  async function renderCategories() {
+    if (!categoriesLoaded) {
+      await loadCategories();
+      return;
+    }
+    paintCategoryRows();
   }
 
   // Drag and drop handlers
@@ -756,8 +804,13 @@ import {
     try {
       const orderedIds = categories.map((c) => c.id);
       categories = await reorderAdminCategories(orderedIds);
+      categoriesLoaded = true;
       await loadCategories();
     } catch (error) {
+      if (isUnauthenticatedError(error)) {
+        console.warn('Error updating category orders:', error);
+        return;
+      }
       console.error('Error updating category orders:', error);
       alert('Failed to save category order: ' + error.message);
       await loadCategories();
@@ -1236,6 +1289,10 @@ import {
       renderStaff(data || []);
       return data || [];
     } catch (error) {
+      if (isUnauthenticatedError(error)) {
+        console.warn('Error loading staff:', error);
+        return [];
+      }
       console.error('Error loading staff:', error);
       alert('Failed to load staff: ' + error.message);
       return [];
@@ -1630,6 +1687,10 @@ export function teardownManageMenu() {
   }
   categoriesChannel = null;
   dishesChannel = null;
+  categoriesLoaded = false;
+  categoriesLoadPromise = null;
+  categories = [];
+  menu = [];
   if (manageMenuSidebarClickHandler) {
     document.removeEventListener('click', manageMenuSidebarClickHandler);
     manageMenuSidebarClickHandler = null;
