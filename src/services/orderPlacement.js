@@ -1,4 +1,4 @@
-import { apiRequest } from '../lib/api';
+import { ApiError, apiRequest } from '../lib/api';
 
 function isUnpaidOrder(order) {
   return (
@@ -57,6 +57,42 @@ function upsertLocalOrder(order) {
   localStorage.setItem('customerOrders', JSON.stringify(customerOrders));
 }
 
+function markLocalOrderClosed(orderId) {
+  if (!orderId) return;
+
+  const customerOrders = JSON.parse(localStorage.getItem('customerOrders') || '[]');
+  const index = customerOrders.findIndex((order) => order.id === orderId);
+  if (index < 0) return;
+
+  customerOrders[index] = {
+    ...customerOrders[index],
+    cancelled: true,
+  };
+  localStorage.setItem('customerOrders', JSON.stringify(customerOrders));
+}
+
+function isMergeRejectedError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return (
+    message.includes('not open for merging') ||
+    message.includes('too old to merge') ||
+    message.includes('existing order not found') ||
+    message.includes('does not belong to this restaurant')
+  );
+}
+
+async function postOrder({ adminId, tableNumber, existingOrderId, items }) {
+  return apiRequest('/orders', {
+    method: 'POST',
+    body: {
+      adminId,
+      tableNumber: tableNumber || null,
+      existingOrderId: existingOrderId || null,
+      items,
+    },
+  });
+}
+
 export async function placeOrderFromCart(cart, adminId, tableNumber) {
   if (!adminId) {
     throw new Error('Restaurant information not found');
@@ -66,17 +102,32 @@ export async function placeOrderFromCart(cart, adminId, tableNumber) {
     throw new Error('Your kart is empty');
   }
 
+  const items = cartToItems(cart);
   const existingUnpaidOrder = findExistingUnpaidOrder(adminId);
+  const existingOrderId = existingUnpaidOrder?.id || null;
 
-  const data = await apiRequest('/orders', {
-    method: 'POST',
-    body: {
+  let data;
+  try {
+    data = await postOrder({
       adminId,
-      tableNumber: tableNumber || null,
-      existingOrderId: existingUnpaidOrder?.id || null,
-      items: cartToItems(cart),
-    },
-  });
+      tableNumber,
+      existingOrderId,
+      items,
+    });
+  } catch (error) {
+    // Stale local unpaid order (e.g. admin cancelled) — close it locally and place a new order.
+    if (existingOrderId && error instanceof ApiError && isMergeRejectedError(error)) {
+      markLocalOrderClosed(existingOrderId);
+      data = await postOrder({
+        adminId,
+        tableNumber,
+        existingOrderId: null,
+        items,
+      });
+    } else {
+      throw error;
+    }
+  }
 
   localStorage.setItem('hasOrders', 'true');
   if (data.order) {
