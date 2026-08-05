@@ -317,18 +317,30 @@ import {
     const newCategoryInput = document.getElementById('newCategoryInput');
     const addCategoryActionBtn = document.getElementById('addCategoryActionBtn');
 
+    if (newCategoryInput) {
+      newCategoryInput.addEventListener('input', function () {
+        this.classList.remove('error');
+      });
+    }
+
     if (addCategoryActionBtn) {
       addCategoryActionBtn.addEventListener('click', async () => {
         const name = (newCategoryInput?.value || '').trim();
-        if (!name) return alert('Enter a category name');
-        
+        if (!name) {
+          if (newCategoryInput) newCategoryInput.classList.add('error');
+          return;
+        }
+
         const catList = await getCategories();
         const exists = catList.some(c => c.toLowerCase() === name.toLowerCase());
         if (exists) return alert('Category exists');
-        
+
         try {
           await addCategory(name);
-          if (newCategoryInput) newCategoryInput.value = '';
+          if (newCategoryInput) {
+            newCategoryInput.value = '';
+            newCategoryInput.classList.remove('error');
+          }
         } catch (error) {
           // Error already handled in addCategory
         }
@@ -1109,15 +1121,20 @@ import {
     }
   }
 
-  // Keep manage-menu content width fixed; sidebar expands as an overlay
+  // Shift manage-menu content when sidebar expands/collapses (same as homepage)
   function updateContainerWidth() {
     const manageMenuSection = document.getElementById('manageMenuSection');
     if (!manageMenuSection || manageMenuSection.style.display === 'none') {
       return;
     }
+    const sidebar = manageMenuSection.querySelector('.layout .sidebar');
     const container = manageMenuSection.querySelector('.layout .container');
-    if (container) {
+    if (!sidebar || !container) return;
+
+    if (sidebar.classList.contains('collapsed')) {
       container.classList.add('full-width');
+    } else {
+      container.classList.remove('full-width');
     }
   }
 
